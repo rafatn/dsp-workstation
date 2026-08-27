@@ -6,3 +6,4 @@ sympy
 pandas
 scikit-learn
 xlsxwriter
+reportlab
