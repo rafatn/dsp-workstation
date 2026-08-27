@@ -54,7 +54,7 @@ tab_analyzer, tab_compare, tab_adaptive, tab_cepstrum, tab_generator, tab_transf
 ])
 
 # ==========================================
-# כרטיסייה 1: ספקטרום אנלייזר + PSD + ייצוא דוחות PDF ו-Excel
+# כרטיסייה 1: ספקטרום אנלייזר + PSD + ייצוא
 # ==========================================
 with tab_analyzer:
     st.header("מנתח ספקטרום ראשי, PSD ודוחות")
@@ -225,7 +225,6 @@ with tab_analyzer:
             st.download_button("📥 הורד נתוני ספקטרום (Excel)", buffer_excel.getvalue(), "dsp_spectrum.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         with col_ex2:
-            # יצירת דוח PDF פשוט
             pdf_buffer = io.BytesIO()
             c = canvas.Canvas(pdf_buffer, pagesize=letter)
             c.drawString(100, 750, "Advanced DSP Workstation - Engineering Report")
@@ -233,7 +232,7 @@ with tab_analyzer:
             c.drawString(100, 700, f"Sampling Rate: {sr_ana} Hz")
             c.drawString(100, 680, f"RMS Power: {rms_val:.4f}")
             c.drawString(100, 660, f"Crest Factor: {crest_factor:.2f}")
-            c.drawString(100, 640, f"Dominant Frequency: {freqs[np.argmax(fft_mag]):,.1f} Hz")
+            c.drawString(100, 640, f"Dominant Frequency: {freqs[np.argmax(fft_mag)]:,.1f} Hz")
             c.save()
             st.download_button("📄 הורד דוח הנדסי (PDF)", pdf_buffer.getvalue(), "dsp_report.pdf", "application/pdf")
     else:
@@ -275,7 +274,6 @@ with tab_adaptive:
     noise_lms = 0.5 * np.random.normal(0, 1, n_pts)
     input_sig = desired + noise_lms
 
-    # מימוש פשוט של מסנן LMS
     mu = st.slider("קצב למידה (Learning Rate - Mu)", 0.001, 0.1, 0.01, 0.005)
     filter_order = st.slider("מספר מקדמי המסנן (Taps)", 2, 32, 8)
     
@@ -303,7 +301,6 @@ with tab_cepstrum:
     st.write("משמש לזיהוי תדרים בסיסיים נסתרים (Pitch) ואיתור הדים (Echoes).")
     
     if signal_ana is not None and len(signal_ana) > 0:
-        # חישוב Cepstrum: IFFT של ה-Log של ה-FFT המוחלט
         spectrum = np.abs(np.fft.fft(signal_ana))
         log_spec = np.log(spectrum + 1e-10)
         cepstrum = np.abs(np.fft.ifft(log_spec))
