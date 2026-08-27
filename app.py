@@ -42,7 +42,7 @@ st.markdown("תחנת עבודה הנדסית משולבת: **ניתוח ספק�
 tab_analyzer, tab_generator, tab_transforms, tab_ml, tab_waterfall = st.tabs([
     "📊 1. ספקטרום אנלייזר + DB", 
     "📈 2. מחולל אותות", 
-    "🧮 3. טרנספורם פורייה ולפלס",
+    "🧮 3. טרנספורם פורייה, לפלס וטורי טיילור",
     "🤖 4. זיהוי אותות וחריגות (ML)",
     "🌊 5. תצוגת מפל מים"
 ])
@@ -203,7 +203,6 @@ with tab_analyzer:
         st.markdown("---")
         st.subheader("📈 מדדי DSP הנדסיים")
         
-        # חישוב מדדים כולל אנרגיה
         rms_val = np.sqrt(np.mean(signal_to_analyze**2))
         crest_factor = np.max(np.abs(signal_to_analyze)) / (rms_val + 1e-10)
         dt = 1.0 / sr_ana
@@ -259,20 +258,25 @@ with tab_generator:
 
 
 # ==========================================
-# כרטיסייה 3: טרנספורם פורייה ולפלס סימבולי
+# כרטיסייה 3: טרנספורם פורייה, לפלס וטורי טיילור
 # ==========================================
 with tab_transforms:
-    st.header("🧮 מחשבון טרנספורם פורייה ולפלס סימבולי")
-    st.write("הקלד פונקציה בזמן $t$ (למשל: `exp(-2*t)*sin(3*t)`, `t**2`) וקבל את ההעתקים שלה.")
+    st.header("🧮 מחשבון טרנספורם פורייה, לפלס וקירוב טיילור/מקלורין")
+    st.write("הקלד פונקציה בזמן $t$ (למשל: `exp(-2*t)*sin(3*t)`, `cos(t)`) וקבל את ההעתקים והקירובים הפולינומיים שלה.")
 
     t_sym = sp.Symbol('t', real=True, positive=True)
     omega = sp.Symbol('omega', real=True)
     s_sym = sp.Symbol('s')
 
-    example_func = st.selectbox(
-        "או בחר דוגמה מוכנה מראש:",
-        ["הקלד פונקציה ידנית", "exp(-2*t)*sin(5*t)", "exp(-3*t)", "t * exp(-t)", "cos(4*t)"]
-    )
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        example_func = st.selectbox(
+            "בחר דוגמה מוכנה מראש:",
+            ["הקלד פונקציה ידנית", "exp(-2*t)*sin(5*t)", "exp(-3*t)", "t * exp(-t)", "cos(4*t)", "sin(t)"]
+        )
+    with col_t2:
+        taylor_order = st.slider("סדר פולינום לטור טיילור/מקלורין ($n$):", 1, 10, 4)
+        taylor_point = st.number_input("נקודת פיתוח לטור טיילור ($t_0$):", value=0.0, step=0.5)
 
     if example_func == "הקלד פונקציה ידנית":
         func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)")
@@ -280,7 +284,7 @@ with tab_transforms:
         func_input_str = example_func
         st.info(f"נבחרה הפונקציה: `{func_input_str}`")
 
-    if st.button("חשב טרנספורמים"):
+    if st.button("חשב טרנספורמים וטורים"):
         try:
             local_dict = {'t': t_sym, 'sin': sp.sin, 'cos': sp.cos, 'exp': sp.exp, 'log': sp.log, 'Heaviside': sp.Heaviside}
             f_t = sp.sympify(func_input_str, locals=local_dict)
@@ -288,17 +292,25 @@ with tab_transforms:
             st.markdown("### 📝 הפונקציה המקורית בזמן: $f(t)$")
             st.latex(f"f(t) = {sp.latex(f_t)}")
 
+            # טרנספורם לפלס
             with st.spinner("מחשב טרנספורם לפלס..."):
                 laplace_res = sp.laplace_transform(f_t, t_sym, s_sym, noconds=True)
-
             st.markdown("### ⚡ טרנספורם לפלס: $F(s) = \\mathcal{L}\\{f(t)\\}$")
             st.latex(f"F(s) = {sp.latex(laplace_res)}")
 
+            # טרנספורם פורייה
             with st.spinner("מחשב טרנספורם פורייה..."):
                 fourier_res = sp.fourier_transform(f_t, t_sym, omega)
-
             st.markdown("### 📊 טרנספורם פורייה רציף: $\\mathcal{F}\\{\\omega\\}$")
             st.latex(f"\\hat{f}(\\omega) = {sp.latex(fourier_res)}")
+
+            # טור טיילור / מקלורין
+            with st.spinner("מחשב טור טיילור/מקלורין..."):
+                taylor_res = f_t.series(t_sym, taylor_point, taylor_order + 1).removeO()
+            
+            series_name = "מקלורין (סביב 0)" if taylor_point == 0 else f"טיילור (סביב t={taylor_point})"
+            st.markdown(f"### 📈 פיתוח טור **{series_name}** (עד סדר {taylor_order}):")
+            st.latex(f"f(t) \\approx {sp.latex(taylor_res)}")
 
         except Exception as e:
             st.error(f"שגיאה בניתוח הפונקציה: {e}.")
