@@ -334,24 +334,20 @@ with tab_generator:
 # כרטיסייה 6: פורייה, לפלס וטורי טיילור
 # ==========================================
 with tab_transforms:
-    st.header("🧮 מחשבון מתמטי (פורייה, לפלס וטיילור)")
-    # ==========================================
-# כרטיסייה 6: פורייה, לפלס וטורי טיילור
-# ==========================================
-with tab_transforms:
     st.header("🧮 מחשבון מתמטי (פורייה, לפלס וטורי טיילור)")
     
     transform_type = st.selectbox(
         "בחר כלי מתמטי:", 
-        ["התמרת לפלס (Laplace)", "טור טיילור (Taylor Series)", "טור פוריאה (Fourier Series)"]
+        ["התמרת לפלס (Laplace)", "טור טיילור (Taylor Series)", "טור פוריאה (Fourier Series)"],
+        key="trans_select_box"
     )
     
     t_sym = sp.Symbol('t', real=True, positive=True)
     x_sym = sp.Symbol('x', real=True)
     
     if "לפלס" in transform_type:
-        func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)")
-        if st.button("חשב לפלס"):
+        func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)", key="lap_input")
+        if st.button("חשב לפלס", key="btn_laplace"):
             try:
                 f_t = sp.sympify(func_input_str)
                 laplace_res = sp.laplace_transform(f_t, t_sym, sp.Symbol('s'), noconds=True)
@@ -361,14 +357,14 @@ with tab_transforms:
                 st.error(f"שגיאה בפענוח הפונקציה: {e}")
 
     elif "טיילור" in transform_type:
-        func_input_str = st.text_input("הקלד פונקציה לפי $x$:", "cos(x)")
+        func_input_str = st.text_input("הקלד פונקציה לפי $x$:", "cos(x)", key="taylor_input")
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-            taylor_point = st.number_input("נקודת פיתוח ($x_0$)", value=0.0)
+            taylor_point = st.number_input("נקודת פיתוח ($x_0$)", value=0.0, key="taylor_pt")
         with col_t2:
-            taylor_order = st.slider("דרגה (Order)", 1, 10, 4)
+            taylor_order = st.slider("דרגה (Order)", 1, 10, 4, key="taylor_ord")
             
-        if st.button("חשב טורי טיילור"):
+        if st.button("חשב טורי טיילור", key="btn_taylor"):
             try:
                 f_x = sp.sympify(func_input_str)
                 taylor_res = f_x.series(x_sym, taylor_point, taylor_order + 1).removeO()
@@ -380,32 +376,25 @@ with tab_transforms:
     elif "פוריאה" in transform_type:
         st.subheader("טור פוריאה (Fourier Series Expansion)")
         st.write("מציאת מקדמי טור פוריאה לפונקציה מחזורית בתוך התחום $[-\\pi, \\pi]$.")
-        func_input_str = st.text_input("הקלד פונקציה מחזורית לפי $x$:", "x")
-        fourier_n = st.slider("מספר הרמוניות ($N$)", 1, 10, 3)
+        func_input_str = st.text_input("הקלד פונקציה מחזורית לפי $x$:", "x", key="fourier_input")
+        fourier_n = st.slider("מספר הרמוניות ($N$)", 1, 10, 3, key="fourier_n_slider")
         
-        if st.button("חשב טור פוריאה"):
+        if st.button("חשב טור פוריאה", key="btn_fourier"):
             try:
                 f_x = sp.sympify(func_input_str)
-                # חישוב מקדמים בסיסיים
                 L = sp.pi
                 a0 = (1 / (2 * L)) * sp.integrate(f_x, (x_sym, -L, L))
                 
                 fourier_sum = a0
-                an_list = []
-                bn_list = []
-                
                 for n in range(1, fourier_n + 1):
                     an = (1 / L) * sp.integrate(f_x * sp.cos(n * x_sym), (x_sym, -L, L))
                     bn = (1 / L) * sp.integrate(f_x * sp.sin(n * x_sym), (x_sym, -L, L))
-                    an_list.append(an)
-                    bn_list.append(bn)
                     fourier_sum += an * sp.cos(n * x_sym) + bn * sp.sin(n * x_sym)
                 
                 st.latex(rf"f(x) = {sp.latex(f_x)}")
                 st.latex(rf"S_N(x) \approx {sp.latex(fourier_sum)}")
             except Exception as e:
                 st.error(f"שגיאה בחישוב טור פוריאה: {e}")
-
 
 # ==========================================
 # כרטיסייה 7: למידת מכונה (ML)
