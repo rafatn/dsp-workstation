@@ -1,7 +1,6 @@
 import numpy as np
 import streamlit as st
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
 import scipy.io.wavfile as wavfile
 import scipy.signal as signal_lib
 import sympy as sp
@@ -10,17 +9,15 @@ import pandas as pd
 import io
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import KNeighborsClassifier
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 
 # --- הגדרת תצורת העמוד ---
 st.set_page_config(
-    page_title="Advanced DSP Workstation Ultimate Pro v2",
+    page_title="Advanced DSP Workstation Ultimate Pro",
     page_icon="🎛️",
     layout="wide"
 )
 
-# --- עיצוב CSS מתקדם ---
+# --- עיצוב CSS מתקדם לשיפור נראות ואסתטיקה ---
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
@@ -38,26 +35,23 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🎛️ Advanced DSP Workstation Ultimate Pro v2")
-st.markdown("תחנת עבודה הנדסית מתקדמת: **השוואת אותות, מסנן LMS אדפטיבי, צפסטרום, דוחות PDF, ניתוח PSD, ו-ML**.")
+st.title("🎛️ Advanced DSP Workstation Ultimate Pro")
+st.markdown("תחנת עבודה הנדסית משולבת: **ניתוח ספקטרום, עיצוב UI מתקדם, חיבור למסדי נתונים וזיהוי אותות באמצעות למידת מכונה (ML)**.")
 
-# --- כרטיסיות ראשיות ---
-tab_analyzer, tab_compare, tab_adaptive, tab_cepstrum, tab_generator, tab_transforms, tab_ml, tab_waterfall = st.tabs([
-    "📊 1. ספקטרום אנלייזר + PSD + ייצוא", 
-    "⚖️ 2. השוואת אותות כפולה",
-    "🔄 3. סינון אדפטיבי (LMS)",
-    "📡 4. ניתוח צפסטרום (Cepstrum)",
-    "📈 5. מחולל אותות ואפקטים", 
-    "🧮 6. פורייה, לפלס וטורי טיילור",
-    "🤖 7. זיהוי אותות וחריגות (ML)",
-    "🌊 8. מפל מים (Waterfall)"
+# --- יצירת כרטיסיות ראשיות ---
+tab_analyzer, tab_generator, tab_transforms, tab_ml, tab_waterfall = st.tabs([
+    "📊 1. ספקטרום אנלייזר + DB", 
+    "📈 2. מחולל אותות", 
+    "🧮 3. טרנספורם פורייה, לפלס וטורי טיילור",
+    "🤖 4. זיהוי אותות וחריגות (ML)",
+    "🌊 5. תצוגת מפל מים"
 ])
 
 # ==========================================
-# כרטיסייה 1: ספקטרום אנלייזר + PSD + ייצוא דוחות PDF ו-Excel
+# כרטיסייה 1: ספקטרום אנלייזר + מסד נתונים (SQL/CSV)
 # ==========================================
 with tab_analyzer:
-    st.header("מנתח ספקטרום ראשי, PSD ודוחות")
+    st.header("מנתח ספקטרום מתקדם עם תמיכה במסדי נתונים")
     
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
@@ -74,10 +68,9 @@ with tab_analyzer:
         noise_boost = st.slider("הזרקת רעש לבן (SNR)", 0.0, 1.0, 0.0, 0.05, key="noise_b")
 
     with col_c3:
-        st.subheader("⚙️ עיוותים וסננונים מתקדמים")
+        st.subheader("⚙️ עיוותים ומסננים")
         distortion_drive = st.slider("עיוות לא-ליניארי / Clipping (Drive)", 1.0, 10.0, 1.0, 0.5)
-        apply_filter = st.checkbox("הפעל מסנן מתקדם (Filter)")
-        filter_family = st.selectbox("משפחת מסנן:", ["Butterworth", "Chebyshev I", "Elliptic"])
+        apply_filter = st.checkbox("הפעל מסנן (Filter)")
         filter_type = st.selectbox("סוג מסנן:", ["Low-Pass (מעביר-נמוכים)", "High-Pass (מעביר-גבוהים)", "Band-Pass (מעביר-רצועה)"])
         
         if "Band-Pass" in filter_type:
@@ -127,16 +120,18 @@ with tab_analyzer:
                 info_ana = f"קובץ נתונים: {uploaded_file.name}"
 
     elif analyzer_source == "שליפה ממסד נתונים (SQLite)":
+        st.info("מייצר בסיס נתונים מקומי לדוגמה ושולף ממנו רצף עיתי...")
         conn = sqlite3.connect(":memory:")
         cursor = conn.cursor()
         cursor.execute("CREATE TABLE signals (id INTEGER PRIMARY KEY, amplitude REAL)")
         db_sig = np.sin(2 * np.pi * 300 * t_ana) + 0.2 * np.random.normal(0, 1, len(t_ana))
         cursor.executemany("INSERT INTO signals (amplitude) VALUES (?)", [(val,) for val in db_sig])
         conn.commit()
+        
         df_db = pd.read_sql("SELECT amplitude FROM signals", conn)
         signal_ana = df_db['amplitude'].values
         conn.close()
-        info_ana = "נתונים שנשלפו מטבלת SQLite"
+        info_ana = "נתונים שנשלפו מטבלת SQLite בזיכרון"
 
     if signal_ana is not None and len(signal_ana) > 0:
         if noise_boost > 0:
@@ -145,24 +140,22 @@ with tab_analyzer:
 
         if distortion_drive > 1.0:
             signal_ana = np.clip(signal_ana * distortion_drive, -1.0, 1.0)
-            info_ana += f" | דיסטורשן ({distortion_drive}x)"
+            info_ana += f" | דיסטורשן (Drive: {distortion_drive}x)"
 
         if apply_filter:
             nyq = sr_ana / 2
-            btype = 'band' if "Band-Pass" in filter_type else ('low' if 'Low' in filter_type else 'high')
             if "Band-Pass" in filter_type:
                 low_norm = max(0.01, min(0.98, c_low / nyq))
                 high_norm = max(low_norm + 0.01, min(0.99, c_high / nyq))
-                Wn = [low_norm, high_norm]
+                b, a = signal_lib.butter(4, [low_norm, high_norm], btype='band')
+                info_filter = f"Band-Pass ({c_low}-{c_high}Hz)"
             else:
-                Wn = max(0.01, min(0.99, cutoff_freq / nyq))
-
-            if filter_family == "Butterworth": b, a = signal_lib.butter(4, Wn, btype=btype)
-            elif filter_family == "Chebyshev I": b, a = signal_lib.cheby1(4, 1.0, Wn, btype=btype)
-            else: b, a = signal_lib.ellip(4, 1.0, 40, Wn, btype=btype)
+                cutoff_norm = max(0.01, min(0.99, cutoff_freq / nyq))
+                b, a = signal_lib.butter(4, cutoff_norm, btype='low' if 'Low' in filter_type else 'high')
+                info_filter = f"{filter_type}, חיתוך: {cutoff_freq}Hz"
             
             signal_to_analyze = signal_lib.lfilter(b, a, signal_ana)
-            info_ana += f" | מסונן ({filter_family})"
+            info_ana += f" | מסונן ({info_filter})"
         else:
             signal_to_analyze = signal_ana
 
@@ -178,194 +171,259 @@ with tab_analyzer:
         fft_mag = np.abs(fft_complex)
         fft_db = 20 * np.log10(fft_mag + 1e-10)
         freqs = np.fft.rfftfreq(len(signal_to_analyze), 1 / sr_ana)
-        freqs_psd, psd_vals = signal_lib.welch(signal_to_analyze, fs=sr_ana, nperseg=min(1024, len(signal_to_analyze)))
 
         g1, g2 = st.columns(2)
         with g1:
             st.subheader("⏱️ מישור הזמן")
-            fig_t = go.Figure()
-            fig_t.add_trace(go.Scatter(y=signal_to_analyze[:min(len(signal_to_analyze), 2000)], mode='lines', line=dict(color='#ff007f', width=1.2)))
-            fig_t.update_layout(paper_bgcolor='#0e1117', plot_bgcolor='#0e1117', font=dict(color='white'), margin=dict(l=20, r=20, t=20, b=20), height=300)
-            st.plotly_chart(fig_t, use_container_width=True)
+            fig_t, ax_t = plt.subplots(figsize=(6, 3.5))
+            fig_t.patch.set_facecolor('#0e1117'); ax_t.set_facecolor('#0e1117')
+            ax_t.plot(signal_to_analyze[:min(len(signal_to_analyze), 2000)], color='#ff007f', linewidth=1.2)
+            ax_t.tick_params(colors='white'); ax_t.grid(True, linestyle='--', alpha=0.3)
+            for s in ax_t.spines.values(): s.set_color('#30363d')
+            st.pyplot(fig_t)
 
         with g2:
-            st.subheader("📊 ספקטרום תדרים (Magnitude)")
-            fig_f = go.Figure()
-            fig_f.add_trace(go.Scatter(x=freqs, y=fft_db, mode='lines', line=dict(color='#00ffcc', width=1.2)))
-            fig_f.update_layout(paper_bgcolor='#0e1117', plot_bgcolor='#0e1117', font=dict(color='white'), xaxis=dict(range=[0, sr_ana/2]), margin=dict(l=20, r=20, t=20, b=20), height=300)
-            st.plotly_chart(fig_f, use_container_width=True)
+            st.subheader("📊 מישור התדר (Magnitude Spectrum)")
+            fig_f, ax_f = plt.subplots(figsize=(6, 3.5))
+            fig_f.patch.set_facecolor('#0e1117'); ax_f.set_facecolor('#0e1117')
+            ax_f.plot(freqs, fft_db, color='#00ffcc', linewidth=1.2)
+            ax_f.set_xlim(0, sr_ana / 2)
+            
+            peak_idx = np.argmax(fft_mag)
+            peak_freq = freqs[peak_idx]
+            peak_db = fft_db[peak_idx]
+            ax_f.annotate(f'Peak: {peak_freq:.1f}Hz', xy=(peak_freq, peak_db), xytext=(peak_freq, peak_db + 10),
+                          arrowprops=dict(facecolor='#ffaa00', shrink=0.05, width=1, headwidth=5),
+                          color='white', fontsize=9)
 
-        st.subheader("📈 צפיפות הספק (Welch PSD)")
-        fig_psd = go.Figure()
-        fig_psd.add_trace(go.Scatter(x=freqs_psd, y=10*np.log10(psd_vals + 1e-10), mode='lines', line=dict(color='#ffaa00', width=1.5)))
-        fig_psd.update_layout(paper_bgcolor='#0e1117', plot_bgcolor='#0e1117', font=dict(color='white'), xaxis_title="תדר (Hz)", yaxis_title="dB/Hz", margin=dict(l=20, r=20, t=20, b=20), height=260)
-        st.plotly_chart(fig_psd, use_container_width=True)
+            ax_f.tick_params(colors='white'); ax_f.grid(True, linestyle='--', alpha=0.3)
+            for s in ax_f.spines.values(): s.set_color('#30363d')
+            st.pyplot(fig_f)
 
+        st.markdown("---")
+        st.subheader("📈 מדדי DSP הנדסיים")
+        
         rms_val = np.sqrt(np.mean(signal_to_analyze**2))
         crest_factor = np.max(np.abs(signal_to_analyze)) / (rms_val + 1e-10)
         dt = 1.0 / sr_ana
         signal_energy = np.sum(signal_to_analyze**2) * dt
         
         m1, m2, m3, m4, m5 = st.columns(5)
-        with m1: st.markdown(f'<div class="metric-card"><div class="metric-title">נייקוויסט</div><div class="metric-value">{sr_ana / 2:,.0f} Hz</div></div>', unsafe_allow_html=True)
-        with m2: st.markdown(f'<div class="metric-card"><div class="metric-title">תדר דומיננטי</div><div class="metric-value">{freqs[np.argmax(fft_mag)]:,.1f} Hz</div></div>', unsafe_allow_html=True)
-        with m3: st.markdown(f'<div class="metric-card"><div class="metric-title">אנרגיה (E)</div><div class="metric-value">{signal_energy:.4f}</div></div>', unsafe_allow_html=True)
-        with m4: st.markdown(f'<div class="metric-card"><div class="metric-title">RMS</div><div class="metric-value">{rms_val:.4f}</div></div>', unsafe_allow_html=True)
-        with m5: st.markdown(f'<div class="metric-card"><div class="metric-title">גורם פסגה</div><div class="metric-value">{crest_factor:.2f}</div></div>', unsafe_allow_html=True)
-
-        # ייצוא ל-Excel ול-PDF
-        st.markdown("<br>", unsafe_allow_html=True)
-        col_ex1, col_ex2 = st.columns(2)
-        
-        with col_ex1:
-            df_export = pd.DataFrame({'Frequency_Hz': freqs, 'Magnitude_dB': fft_db})
-            buffer_excel = io.BytesIO()
-            with pd.ExcelWriter(buffer_excel, engine='xlsxwriter') as writer:
-                df_export.to_excel(writer, sheet_name='FFT_Data', index=False)
-            st.download_button("📥 הורד נתוני ספקטרום (Excel)", buffer_excel.getvalue(), "dsp_spectrum.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-        with col_ex2:
-            # יצירת דוח PDF פשוט
-            pdf_buffer = io.BytesIO()
-            c = canvas.Canvas(pdf_buffer, pagesize=letter)
-            c.drawString(100, 750, "Advanced DSP Workstation - Engineering Report")
-            c.drawString(100, 730, f"Signal Info: {info_ana}")
-            c.drawString(100, 700, f"Sampling Rate: {sr_ana} Hz")
-            c.drawString(100, 680, f"RMS Power: {rms_val:.4f}")
-            c.drawString(100, 660, f"Crest Factor: {crest_factor:.2f}")
-            c.drawString(100, 640, f"Dominant Frequency: {freqs[np.argmax(fft_mag]):,.1f} Hz")
-            c.save()
-            st.download_button("📄 הורד דוח הנדסי (PDF)", pdf_buffer.getvalue(), "dsp_report.pdf", "application/pdf")
+        with m1:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">תדירות נייקוויסט</div><div class="metric-value">{sr_ana / 2:,.0f} Hz</div></div>', unsafe_allow_html=True)
+        with m2:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">תדר דומיננטי</div><div class="metric-value">{freqs[np.argmax(fft_mag)]:,.1f} Hz</div></div>', unsafe_allow_html=True)
+        with m3:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">אנרגיית האות (E)</div><div class="metric-value">{signal_energy:.4f}</div></div>', unsafe_allow_html=True)
+        with m4:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">הספק ממוצע (RMS)</div><div class="metric-value">{rms_val:.4f}</div></div>', unsafe_allow_html=True)
+        with m5:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">גורם הפסגה</div><div class="metric-value">{crest_factor:.2f}</div></div>', unsafe_allow_html=True)
     else:
-        st.info("אנא בחר מקור אות בכרטיסייה זו.")
+        st.info("בחר מקור אות או טען נתונים כדי לצפות בגרפים.")
+
 
 # ==========================================
-# כרטיסייה 2: השוואת אותות כפולה
-# ==========================================
-with tab_compare:
-    st.header("⚖️ השוואת שני אותות במקביל (Dual Signal Comparison)")
-    st.write("השווה בין אות מקור לאות מושווה או מסונן באותו ציר זמן ותדר.")
-    
-    col_comp1, col_comp2 = st.columns(2)
-    with col_comp1:
-        st.subheader("אות ראשון (Signal A)")
-        f_a = st.slider("תדר אות A (Hz)", 50, 2000, 440, key="fa")
-        sig_a = np.sin(2 * np.pi * f_a * np.linspace(0, 0.5, 22050))
-    with col_comp2:
-        st.subheader("אות שני (Signal B)")
-        f_b = st.slider("תדר אות B (Hz)", 50, 2000, 880, key="fb")
-        sig_b = np.sin(2 * np.pi * f_b * np.linspace(0, 0.5, 22050)) + 0.3 * np.random.normal(0, 1, 22050)
-
-    fig_comp = go.Figure()
-    fig_comp.add_trace(go.Scatter(y=sig_a[:1000], name="אות A", line=dict(color='#00ffcc', width=1.2)))
-    fig_comp.add_trace(go.Scatter(y=sig_b[:1000], name="אות B", line=dict(color='#ff007f', width=1.2)))
-    fig_comp.update_layout(paper_bgcolor='#0e1117', plot_bgcolor='#0e1117', font=dict(color='white'), height=350, margin=dict(l=20, r=20, t=20, b=20))
-    st.plotly_chart(fig_comp, use_container_width=True)
-
-# ==========================================
-# כרטיסייה 3: סינון אדפטיבי (LMS Filter)
-# ==========================================
-with tab_adaptive:
-    st.header("🔄 סינון אדפטיבי מבוסס Least Mean Squares (LMS)")
-    st.write("סינון רעשים דינמי מאות רועש בזמן אמת.")
-    
-    n_pts = 1000
-    t_lms = np.linspace(0, 1, n_pts)
-    desired = np.sin(2 * np.pi * 5 * t_lms)
-    noise_lms = 0.5 * np.random.normal(0, 1, n_pts)
-    input_sig = desired + noise_lms
-
-    # מימוש פשוט של מסנן LMS
-    mu = st.slider("קצב למידה (Learning Rate - Mu)", 0.001, 0.1, 0.01, 0.005)
-    filter_order = st.slider("מספר מקדמי המסנן (Taps)", 2, 32, 8)
-    
-    w = np.zeros(filter_order)
-    y_out = np.zeros(n_pts)
-    e_out = np.zeros(n_pts)
-    
-    for n in range(filter_order, n_pts):
-        x_vec = input_sig[n-filter_order:n][::-1]
-        y_out[n] = np.dot(w, x_vec)
-        e_out[n] = desired[n] - y_out[n]
-        w += 2 * mu * e_out[n] * x_vec
-
-    fig_lms = go.Figure()
-    fig_lms.add_trace(go.Scatter(y=input_sig, name="אות נכנס רועש", line=dict(color='#ff4444', width=1)))
-    fig_lms.add_trace(go.Scatter(y=e_out, name="שגיאה / אות מסונן", line=dict(color='#00ffcc', width=1.5)))
-    fig_lms.update_layout(paper_bgcolor='#0e1117', plot_bgcolor='#0e1117', font=dict(color='white'), height=350, margin=dict(l=20, r=20, t=20, b=20))
-    st.plotly_chart(fig_lms, use_container_width=True)
-
-# ==========================================
-# כרטיסייה 4: ניתוח צפסטרום (Cepstrum)
-# ==========================================
-with tab_cepstrum:
-    st.header("📡 ניתוח צפסטרום (Cepstrum Analysis)")
-    st.write("משמש לזיהוי תדרים בסיסיים נסתרים (Pitch) ואיתור הדים (Echoes).")
-    
-    if signal_ana is not None and len(signal_ana) > 0:
-        # חישוב Cepstrum: IFFT של ה-Log של ה-FFT המוחלט
-        spectrum = np.abs(np.fft.fft(signal_ana))
-        log_spec = np.log(spectrum + 1e-10)
-        cepstrum = np.abs(np.fft.ifft(log_spec))
-        quefrency = np.linspace(0, len(signal_ana)/sr_ana, len(cepstrum))
-
-        fig_cep = go.Figure()
-        fig_cep.add_trace(go.Scatter(x=quefrency[:len(quefrency)//2], y=cepstrum[:len(cepstrum)//2], mode='lines', line=dict(color='#aa00ff', width=1.5)))
-        fig_cep.update_layout(paper_bgcolor='#0e1117', plot_bgcolor='#0e1117', font=dict(color='white'), xaxis_title="Quefrency (שניות)", yaxis_title="אמפליטודה", height=350, margin=dict(l=20, r=20, t=20, b=20))
-        st.plotly_chart(fig_cep, use_container_width=True)
-    else:
-        st.info("אנא טען או בחר אות בכרטיסייה הראשונה.")
-
-# ==========================================
-# כרטיסייה 5: מחולל אותות ואפקטים
+# כרטיסייה 2: מחולל אותות
 # ==========================================
 with tab_generator:
-    st.header("מחולל אותות ואפקטים קוליים")
-    gen_type = st.selectbox("צורת גל:", ["גל סינוס", "גל מרובע", "רעש לבן"], key="g_type")
-    gen_freq = st.slider("תדר (Hz)", 50, 5000, 440, key="g_f")
-    gen_dur = st.slider("משך (שניות)", 0.5, 3.0, 1.0, key="g_d")
+    st.header("מחולל אותות מתקדם (Signal Generator)")
+    gen_type = st.selectbox("בחר צורת גל ליצירה:", ["גל סינוס טהור (Sine)", "גל מרובע (Square)", "גל משולש (Triangle)", "רעש לבן (White Noise)"], key="g_type")
     
-    t_gen = np.linspace(0, gen_dur, int(44100 * gen_dur), endpoint=False)
-    gen_sig = np.sin(2 * np.pi * gen_freq * t_gen) if "סינוס" in gen_type else np.random.normal(0, 1, len(t_gen))
-    
-    fig_gen = go.Figure()
-    fig_gen.add_trace(go.Scatter(y=gen_sig[:1000], line=dict(color='#ffaa00', width=1.2)))
-    fig_gen.update_layout(paper_bgcolor='#0e1117', plot_bgcolor='#0e1117', font=dict(color='white'), height=250, margin=dict(l=20, r=20, t=20, b=20))
-    st.plotly_chart(fig_gen, use_container_width=True)
+    cg1, cg2 = st.columns(2)
+    with cg1:
+        gen_freq = st.slider("תדר האות (Hz)", 50, 5000, 440, key="g_f")
+        gen_dur = st.slider("משך השמעה (שניות)", 0.5, 5.0, 2.0, 0.5, key="g_d")
+    with cg2:
+        gen_sr = st.selectbox("קצב דגימה", [8000, 16000, 32000, 44100], index=3, key="g_sr")
+        gen_amp = st.slider("עוצמה", 0.1, 1.0, 0.5, key="g_amp")
+
+    t_gen = np.linspace(0, gen_dur, int(gen_sr * gen_dur), endpoint=False)
+    if "סינוס" in gen_type: gen_sig = gen_amp * np.sin(2 * np.pi * gen_freq * t_gen)
+    elif "מרובע" in gen_type: gen_sig = gen_amp * np.sign(np.sin(2 * np.pi * gen_freq * t_gen))
+    elif "משולש" in gen_type: gen_sig = gen_amp * signal_lib.sawtooth(2 * np.pi * gen_freq * t_gen, width=0.5)
+    else: gen_sig = gen_amp * np.random.normal(0, 1, len(t_gen))
+
+    fig_gen, ax_gen = plt.subplots(figsize=(10, 3))
+    fig_gen.patch.set_facecolor('#0e1117'); ax_gen.set_facecolor('#0e1117')
+    ax_gen.plot(t_gen[:1000], gen_sig[:1000], color='#ffaa00', linewidth=1.2)
+    ax_gen.tick_params(colors='white'); ax_gen.grid(True, linestyle='--', alpha=0.3)
+    for s in ax_gen.spines.values(): s.set_color('#30363d')
+    st.pyplot(fig_gen)
+
+    scaled = np.int16(gen_sig / np.max(np.abs(gen_sig)) * 32767) if np.max(np.abs(gen_sig)) > 0 else gen_sig
+    buf = io.BytesIO()
+    wavfile.write(buf, gen_sr, scaled)
+    st.download_button("💾 הורד קובץ שמע WAV להשמעה", buf.getvalue(), f"gen_{gen_freq}Hz.wav", "audio/wav")
+
 
 # ==========================================
-# כרטיסייה 6: פורייה, לפלס וטורי טיילור
+# כרטיסייה 3: טרנספורם פורייה, לפלס, FFT וטורי טיילור
 # ==========================================
 with tab_transforms:
-    st.header("🧮 מחשבון מתמטי (פורייה, לפלס וטיילור)")
-    func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)")
-    if st.button("חשב"):
-        t_sym = sp.Symbol('t', real=True, positive=True)
-        f_t = sp.sympify(func_input_str)
-        st.latex(f"f(t) = {sp.latex(f_t)}")
-        st.latex(f"\\mathcal{{L}}\\{f(t)\\} = {sp.latex(sp.laplace_transform(f_t, t_sym, sp.Symbol('s'), noconds=True))}")
+    st.header("🧮 מחשבון טרנספורם פורייה רציף ובדיד (FFT), לפלס וטורי טיילור/מקלורין")
+    st.write("הקלד פונקציה בזמן $t$ (למשל: `exp(-2*t)*sin(3*t)`, `cos(t)`) וקבל את ההעתקים, ניתוח ה-FFT והקירובים הפולינומיים שלה.")
+
+    t_sym = sp.Symbol('t', real=True, positive=True)
+    omega = sp.Symbol('omega', real=True)
+    s_sym = sp.Symbol('s')
+
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        example_func = st.selectbox(
+            "בחר דוגמה מוכנה מראש:",
+            ["הקלד פונקציה ידנית", "exp(-2*t)*sin(5*t)", "exp(-3*t)", "t * exp(-t)", "cos(4*t)", "sin(t)"]
+        )
+    with col_t2:
+        taylor_order = st.slider("סדר פולינום לטור טיילור/מקלורין ($n$):", 1, 10, 4)
+        taylor_point = st.number_input("נקודת פיתוח לטור טיילור ($t_0$):", value=0.0, step=0.5)
+
+    if example_func == "הקלד פונקציה ידנית":
+        func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)")
+    else:
+        func_input_str = example_func
+        st.info(f"נבחרה הפונקציה: `{func_input_str}`")
+
+    if st.button("חשב טרנספורמים, FFT וטורים"):
+        try:
+            local_dict = {'t': t_sym, 'sin': sp.sin, 'cos': sp.cos, 'exp': sp.exp, 'log': sp.log, 'Heaviside': sp.Heaviside}
+            f_t = sp.sympify(func_input_str, locals=local_dict)
+
+            st.markdown("### 📝 הפונקציה המקורית בזמן: $f(t)$")
+            st.latex(f"f(t) = {sp.latex(f_t)}")
+
+            # טרנספורם לפלס
+            with st.spinner("מחשב טרנספורם לפלס..."):
+                try:
+                    laplace_res = sp.laplace_transform(f_t, t_sym, s_sym, noconds=True)
+                    st.markdown("### ⚡ טרנספורם לפלס: $F(s) = \\mathcal{L}\\{f(t)\\}$")
+                    st.latex(f"F(s) = {sp.latex(laplace_res)}")
+                except Exception as e_lap:
+                    st.warning(f"לא ניתן היה לחשב לפלס אנליטית: {e_lap}")
+
+            # טרנספורם פורייה רציף
+            with st.spinner("מחשב טרנספורם פורייה רציף..."):
+                try:
+                    fourier_res = sp.fourier_transform(f_t, t_sym, omega)
+                    st.markdown("### 📊 טרנספורם פורייה רציף: $\\hat{f}(\\omega)$")
+                    st.latex(f"\\hat{{f}}(\\omega) = {sp.latex(fourier_res)}")
+                except Exception as e_four:
+                    st.info(f"הערה: טרנספורם פורייה רציף אנליטי לא הופק ישירות עבור פונקציה זו ({e_four}). מוצג בהמשך FFT נומרי מדויק.")
+
+            # חישוב והצגת FFT נומרי (בדיד) לפונקציה המנותחת
+            with st.spinner("מחשב התמרת פורייה מהירה (FFT) נומרית לפונקציה..."):
+                f_numeric = sp.lambdify(t_sym, f_t, 'numpy')
+                sr_fft = 1000
+                t_arr = np.linspace(0, 2.0, int(sr_fft * 2.0), endpoint=False)
+                try:
+                    sig_vals = f_numeric(t_arr)
+                    if np.isscalar(sig_vals):
+                        sig_vals = np.full_like(t_arr, sig_vals)
+                except Exception:
+                    sig_vals = np.zeros_like(t_arr)
+
+                fft_vals = np.fft.rfft(sig_vals)
+                fft_mags = np.abs(fft_vals)
+                freqs_arr = np.fft.rfftfreq(len(t_arr), 1 / sr_fft)
+
+                st.markdown("### 📉 ניתוח FFT בדיד (נומרי) לפונקציה")
+                fig_sym_fft, ax_sym_fft = plt.subplots(figsize=(8, 3))
+                fig_sym_fft.patch.set_facecolor('#0e1117'); ax_sym_fft.set_facecolor('#0e1117')
+                ax_sym_fft.plot(freqs_arr, fft_mags, color='#00ffcc', linewidth=1.5)
+                ax_sym_fft.set_xlim(0, 100)
+                ax_sym_fft.set_xlabel("תדר (Hz)", color='white')
+                ax_sym_fft.set_ylabel("אמפליטודה", color='white')
+                ax_sym_fft.tick_params(colors='white'); ax_sym_fft.grid(True, linestyle='--', alpha=0.3)
+                for s in ax_sym_fft.spines.values(): s.set_color('#30363d')
+                st.pyplot(fig_sym_fft)
+
+            # טור טיילור / מקלורין
+            with st.spinner("מחשב טור טיילור/מקלורין..."):
+                raw_series = f_t.series(t_sym, taylor_point, taylor_order + 1)
+                taylor_res = raw_series.removeO()
+            
+            series_name = "מקלורין (סביב 0)" if taylor_point == 0 else f"טיילור (סביב t={taylor_point})"
+            st.markdown(f"### 📈 פיתוח טור **{series_name}** (עד סדר {taylor_order}):")
+            st.latex(f"f(t) \\approx {sp.latex(taylor_res)}")
+
+        except Exception as e:
+            st.error(f"שגיאה בניתוח הפונקציה: {e}.")
+
 
 # ==========================================
-# כרטיסייה 7: למידת מכונה (ML)
+# כרטיסייה 4: למידת מכונה לזיהוי אותות וחריגות (ML)
 # ==========================================
 with tab_ml:
-    st.header("🤖 זיהוי סוגי אותות וחריגות (ML)")
+    st.header("🤖 זיהוי סוגי אותות ואיתור חריגות באמצעות למידת מכונה (ML)")
+    st.write("המודל מנתח את מאפייני הספקטרום של האות הנוכחי (מכרטיסייה 1) ומזהה את סוגו או האם יש בו חריגות סטטיסטיות (Anomalies).")
+
     if signal_ana is not None and len(signal_ana) > 0:
-        iso = IsolationForest(contamination=0.1, random_state=42)
-        anomalies = iso.fit_predict(signal_ana.reshape(-1, 1))
-        st.info(f"זוהו {np.sum(anomalies == -1)} נקודות חריגות באות.")
+        col_ml1, col_ml2 = st.columns(2)
+
+        with col_ml1:
+            st.subheader("🔍 סיווג חכם של סוג האות")
+            np.random.seed(42)
+            X_train = np.array([
+                [0.707, 1.5], [0.707, 1.4],
+                [1.000, 5.2], [0.995, 5.0],
+                [0.990, 8.5], [1.010, 9.0]
+            ])
+            y_train = ["גל סינוס", "גל סינוס", "גל ריבועי", "גל ריבועי", "רעש סטטיסטי", "רעש סטטיסטי"]
+            
+            clf = KNeighborsClassifier(n_neighbors=1)
+            clf.fit(X_train, y_train)
+
+            curr_rms = np.sqrt(np.mean(signal_to_analyze**2))
+            curr_crest = np.max(np.abs(signal_to_analyze)) / (curr_rms + 1e-10)
+            prediction = clf.predict([[curr_rms, curr_crest]])[0]
+
+            st.success(f"המודל סיווג את האות כדפוס: **{prediction}**")
+            st.write(f"נתונים שנלמדו לצורך הסיווג: RMS = `{curr_rms:.3f}`, Crest Factor = `{curr_crest:.3f}`")
+
+        with col_ml2:
+            st.subheader("🚨 זיהוי חריגות (Anomaly Detection)")
+            iso = IsolationForest(contamination=0.1, random_state=42)
+            reshaped_sig = signal_to_analyze.reshape(-1, 1)
+            iso.fit(reshaped_sig)
+            anomalies = iso.predict(reshaped_sig)
+            anomaly_count = np.sum(anomalies == -1)
+
+            if anomaly_count > (len(signal_to_analyze) * 0.05):
+                st.warning(f"⚠️ אזהרה: זוהו חריגות או עיוותים חריגים באות! (נמצאו {anomaly_count} נקודות חריגות)")
+            else:
+                st.info(f"✅ האות יציב ותקין מבחינה סטטיסטית (חריגות מינוריות: {anomaly_count} נקודות).")
+                
+            fig_ml, ax_ml = plt.subplots(figsize=(6, 2.5))
+            fig_ml.patch.set_facecolor('#0e1117'); ax_ml.set_facecolor('#0e1117')
+            ax_ml.plot(signal_to_analyze[:500], color='#00ffcc', label='Signal', linewidth=1)
+            ax_ml.tick_params(colors='white'); ax_ml.grid(True, linestyle='--', alpha=0.3)
+            for s in ax_ml.spines.values(): s.set_color('#30363d')
+            st.pyplot(fig_ml)
     else:
-        st.info("יש לטעון אות בכרטיסייה 1.")
+        st.info("אנא טען או בחר אות בכרטיסייה הראשונה כדי להפעיל את מודלי ה-ML.")
+
 
 # ==========================================
-# כרטיסייה 8: מפל מים (Waterfall)
+# כרטיסייה 5: תצוגת מפל מים (Waterfall)
 # ==========================================
 with tab_waterfall:
-    st.header("🌊 תצוגת מפל מים (Waterfall Spectrogram)")
-    if signal_ana is not None and len(signal_ana) > 0:
-        f_sgram, t_sgram, Sxx = signal_lib.spectrogram(signal_ana, fs=44100, nperseg=512)
-        fig_wf = go.Figure(data=go.Heatmap(z=10 * np.log10(Sxx + 1e-10), x=t_sgram, y=f_sgram, colorscale='Inferno'))
-        fig_wf.update_layout(paper_bgcolor='#0e1117', plot_bgcolor='#0e1117', font=dict(color='white'), height=350, margin=dict(l=20, r=20, t=20, b=20))
-        st.plotly_chart(fig_wf, use_container_width=True)
+    st.header("תצוגת ספקטרוגרמה / מפל מים (Waterfall Spectrogram)")
+    st.write("מציג את התפתחות התדרים לאורך זמן בצבעים (חם = עוצמה גבוהה, קר = עוצמה נמוכה).")
+
+    if signal_ana is not None and len(signal_ana > 0):
+        fig_wf, ax_wf = plt.subplots(figsize=(10, 4))
+        fig_wf.patch.set_facecolor('#0e1117'); ax_wf.set_facecolor('#0e1117')
+        
+        Pxx, freqs_w, bins, im = ax_wf.specgram(signal_ana, NFFT=1024, Fs=sr_ana, noverlap=512, cmap='inferno')
+        
+        ax_wf.set_xlabel("זמן (שניות)", color='white')
+        ax_wf.set_ylabel("תדר (Hz)", color='white')
+        cbar = fig_wf.colorbar(im, ax=ax_wf)
+        cbar.set_label('עוצמה (dB)', color='white')
+        cbar.ax.yaxis.set_tick_params(color='white')
+        
+        ax_wf.tick_params(colors='white')
+        for s in ax_wf.spines.values(): s.set_color('#30363d')
+        st.pyplot(fig_wf)
     else:
-        st.info("יש לטעון אות בכרטיסייה 1.")
+        st.info("אנא טען או בחר אות בכרטיסייה הראשונה כדי לראות את מפל המים.")
