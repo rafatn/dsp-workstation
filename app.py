@@ -258,11 +258,11 @@ with tab_generator:
 
 
 # ==========================================
-# כרטיסייה 3: טרנספורם פורייה, לפלס וטורי טיילור
+# כרטיסייה 3: טרנספורם פורייה, לפלס, FFT וטורי טיילור
 # ==========================================
 with tab_transforms:
-    st.header("🧮 מחשבון טרנספורם פורייה, לפלס וקירוב טיילור/מקלורין")
-    st.write("הקלד פונקציה בזמן $t$ (למשל: `exp(-2*t)*sin(3*t)`, `cos(t)`) וקבל את ההעתקים והקירובים הפולינומיים שלה.")
+    st.header("🧮 מחשבון טרנספורם פורייה רציף ובדיד (FFT), לפלס וטורי טיילור/מקלורין")
+    st.write("הקלד פונקציה בזמן $t$ (למשל: `exp(-2*t)*sin(3*t)`, `cos(t)`) וקבל את ההעתקים, ניתוח ה-FFT והקירובים הפולינומיים שלה.")
 
     t_sym = sp.Symbol('t', real=True, positive=True)
     omega = sp.Symbol('omega', real=True)
@@ -284,7 +284,7 @@ with tab_transforms:
         func_input_str = example_func
         st.info(f"נבחרה הפונקציה: `{func_input_str}`")
 
-    if st.button("חשב טרנספורמים וטורים"):
+    if st.button("חשב טרנספורמים, FFT וטורים"):
         try:
             local_dict = {'t': t_sym, 'sin': sp.sin, 'cos': sp.cos, 'exp': sp.exp, 'log': sp.log, 'Heaviside': sp.Heaviside}
             f_t = sp.sympify(func_input_str, locals=local_dict)
@@ -294,19 +294,53 @@ with tab_transforms:
 
             # טרנספורם לפלס
             with st.spinner("מחשב טרנספורם לפלס..."):
-                laplace_res = sp.laplace_transform(f_t, t_sym, s_sym, noconds=True)
-            st.markdown("### ⚡ טרנספורם לפלס: $F(s) = \\mathcal{L}\\{f(t)\\}$")
-            st.latex(f"F(s) = {sp.latex(laplace_res)}")
+                try:
+                    laplace_res = sp.laplace_transform(f_t, t_sym, s_sym, noconds=True)
+                    st.markdown("### ⚡ טרנספורם לפלס: $F(s) = \\mathcal{L}\\{f(t)\\}$")
+                    st.latex(f"F(s) = {sp.latex(laplace_res)}")
+                except Exception as e_lap:
+                    st.warning(f"לא ניתן היה לחשב לפלס אנליטית: {e_lap}")
 
-            # טרנספורם פורייה
-            with st.spinner("מחשב טרנספורם פורייה..."):
-                fourier_res = sp.fourier_transform(f_t, t_sym, omega)
-            st.markdown("### 📊 טרנספורם פורייה רציף: $\\mathcal{F}\\{\\omega\\}$")
-            st.latex(f"\\hat{f}(\\omega) = {sp.latex(fourier_res)}")
+            # טרנספורם פורייה רציף
+            with st.spinner("מחשב טרנספורם פורייה רציף..."):
+                try:
+                    fourier_res = sp.fourier_transform(f_t, t_sym, omega)
+                    st.markdown("### 📊 טרנספורם פורייה רציף: $\\hat{f}(\\omega)$")
+                    st.latex(f"\\hat{{f}}(\\omega) = {sp.latex(fourier_res)}")
+                except Exception as e_four:
+                    st.info(f"הערה: טרנספורם פורייה רציף אנליטי לא הופק ישירות עבור פונקציה זו ({e_four}). מוצג בהמשך FFT נומרי מדויק.")
+
+            # חישוב והצגת FFT נומרי (בדיד) לפונקציה המנותחת
+            with st.spinner("מחשב התמרת פורייה מהירה (FFT) נומרית לפונקציה..."):
+                f_numeric = sp.lambdify(t_sym, f_t, 'numpy')
+                sr_fft = 1000
+                t_arr = np.linspace(0, 2.0, int(sr_fft * 2.0), endpoint=False)
+                try:
+                    sig_vals = f_numeric(t_arr)
+                    if np.isscalar(sig_vals):
+                        sig_vals = np.full_like(t_arr, sig_vals)
+                except Exception:
+                    sig_vals = np.zeros_like(t_arr)
+
+                fft_vals = np.fft.rfft(sig_vals)
+                fft_mags = np.abs(fft_vals)
+                freqs_arr = np.fft.rfftfreq(len(t_arr), 1 / sr_fft)
+
+                st.markdown("### 📉 ניתוח FFT בדיד (נומרי) לפונקציה")
+                fig_sym_fft, ax_sym_fft = plt.subplots(figsize=(8, 3))
+                fig_sym_fft.patch.set_facecolor('#0e1117'); ax_sym_fft.set_facecolor('#0e1117')
+                ax_sym_fft.plot(freqs_arr, fft_mags, color='#00ffcc', linewidth=1.5)
+                ax_sym_fft.set_xlim(0, 100)
+                ax_sym_fft.set_xlabel("תדר (Hz)", color='white')
+                ax_sym_fft.set_ylabel("אמפליטודה", color='white')
+                ax_sym_fft.tick_params(colors='white'); ax_sym_fft.grid(True, linestyle='--', alpha=0.3)
+                for s in ax_sym_fft.spines.values(): s.set_color('#30363d')
+                st.pyplot(fig_sym_fft)
 
             # טור טיילור / מקלורין
             with st.spinner("מחשב טור טיילור/מקלורין..."):
-                taylor_res = f_t.series(t_sym, taylor_point, taylor_order + 1).removeO()
+                raw_series = f_t.series(t_sym, taylor_point, taylor_order + 1)
+                taylor_res = raw_series.removeO()
             
             series_name = "מקלורין (סביב 0)" if taylor_point == 0 else f"טיילור (סביב t={taylor_point})"
             st.markdown(f"### 📈 פיתוח טור **{series_name}** (עד סדר {taylor_order}):")
@@ -376,7 +410,7 @@ with tab_waterfall:
     st.header("תצוגת ספקטרוגרמה / מפל מים (Waterfall Spectrogram)")
     st.write("מציג את התפתחות התדרים לאורך זמן בצבעים (חם = עוצמה גבוהה, קר = עוצמה נמוכה).")
 
-    if signal_ana is not None and len(signal_ana) > 0:
+    if signal_ana is not None and len(signal_ana > 0):
         fig_wf, ax_wf = plt.subplots(figsize=(10, 4))
         fig_wf.patch.set_facecolor('#0e1117'); ax_wf.set_facecolor('#0e1117')
         
