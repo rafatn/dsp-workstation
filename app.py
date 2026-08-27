@@ -342,10 +342,10 @@ with tab_ml:
             anomaly_count = np.sum(anomalies == -1)
 
             if anomaly_count > (len(signal_to_analyze) * 0.05):
-                st.warning(ف"⚠️ אזהרה: זוהו חריגות או עיוותים חריגים באות! ( נמצאו {anomaly_count} נקודות חריגות)")
+                st.warning(f"⚠️ אזהרה: זוהו חריגות או עיוותים חריגים באות! (נמצאו {anomaly_count} נקודות חריגות)")
             else:
                 st.info(f"✅ האות יציב ותקין מבחינה סטטיסטית (חריגות מינוריות: {anomaly_count} נקודות).")
-
+                
             fig_ml, ax_ml = plt.subplots(figsize=(6, 2.5))
             fig_ml.patch.set_facecolor('#0e1117'); ax_ml.set_facecolor('#0e1117')
             ax_ml.plot(signal_to_analyze[:500], color='#00ffcc', label='Signal', linewidth=1)
