@@ -4,11 +4,12 @@ import matplotlib.pyplot as plt
 import sounddevice as sd
 import scipy.io.wavfile as wavfile
 import scipy.signal as signal_lib
+import sympy as sp
 import io
 
 # --- הגדרת תצורת העמוד ---
 st.set_page_config(
-    page_title="Advanced DSP Workstation Ultimate",
+    page_title="Advanced DSP Workstation Ultimate Pro",
     page_icon="🎛️",
     layout="wide"
 )
@@ -20,14 +21,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🎛️ Advanced DSP Workstation Ultimate")
-st.write("תחנת עבודה מתקדמת לעיבוד אותות ספרתי, ניתוח פאזה, דיסטורשן, פילטור וספקטרום.")
+st.title("🎛️ Advanced DSP Workstation Ultimate Pro")
+st.write("תחנת עבודה מתקדמת לעיבוד אותות ספרתי, פילטור, דיסטורשן, מפל מים וטרנספורמים אנליטיים (פורייה ולפלס).")
 
 # --- יצירת כרטיסיות ראשיות ---
-tab_analyzer, tab_generator, tab_waterfall = st.tabs([
+tab_analyzer, tab_generator, tab_transforms, tab_waterfall = st.tabs([
     "📊 1. ספקטרום אנלייזר + פאזה ודיסטורשן", 
     "📈 2. מחולל אותות", 
-    "🌊 3. תצוגת מפל מים (Waterfall)"
+    "🧮 3. טרנספורם פורייה ולפלס סימבולי",
+    "🌊 4. תצוגת מפל מים (Waterfall)"
 ])
 
 # ==========================================
@@ -120,17 +122,14 @@ with tab_analyzer:
                 info_ana = f"קובץ נתונים: {uploaded_file.name}"
 
     if signal_ana is not None and len(signal_ana) > 0:
-        # 1. הזרקת רעש
         if noise_boost > 0:
             signal_ana = signal_ana + noise_boost * np.random.normal(0, 1, len(signal_ana))
             info_ana += f" + רעש ({noise_boost})"
 
-        # 2. עיוות לא-ליניארי (Distortion / Clipping)
         if distortion_drive > 1.0:
             signal_ana = np.clip(signal_ana * distortion_drive, -1.0, 1.0)
             info_ana += f" | דיסטורשן (Drive: {distortion_drive}x)"
 
-        # 3. פילטר ספרתי
         if apply_filter:
             nyq = sr_ana / 2
             if "Band-Pass" in filter_type:
@@ -150,7 +149,6 @@ with tab_analyzer:
 
         st.success(f"מנתח את האות: **{info_ana}**")
         
-        # בחירת חלון FFT וחישוב
         if "Hann" in window_type: window = np.hanning(len(signal_to_analyze))
         elif "Hamming" in window_type: window = np.hamming(len(signal_to_analyze))
         elif "Blackman" in window_type: window = np.blackman(len(signal_to_analyze))
@@ -202,7 +200,6 @@ with tab_analyzer:
                 for s in ax_p.spines.values(): s.set_color('#30363d')
                 st.pyplot(fig_p)
 
-        # --- מדדים וייצוא ---
         st.markdown("---")
         st.subheader("📈 מדדי DSP וייצוא נתונים")
         rms_val = np.sqrt(np.mean(signal_to_analyze**2))
@@ -266,7 +263,57 @@ with tab_generator:
 
 
 # ==========================================
-# כרטיסייה 3: תצוגת מפל מים (Waterfall / Spectrogram)
+# כרטיסייה 3: טרנספורם פורייה ולפלס סימבולי
+# ==========================================
+with tab_transforms:
+    st.header("🧮 מחשבון טרנספורם פורייה ולפלס סימבולי")
+    st.write("הקלד פונקציה בזמן $t$ (למשל: `exp(-2*t)*sin(3*t)`, `t**2`, `exp(-a*t)`) וקבל את ההעתקים שלה במישור התדר/המרוכב.")
+
+    t_sym = sp.Symbol('t', real=True, positive=True)
+    omega = sp.Symbol('omega', real=True)
+    s_sym = sp.Symbol('s')
+
+    # דוגמאות מוכנות מראש לבחירה מהירה
+    example_func = st.selectbox(
+        "או בחר דוגמה מוכנה מראש:",
+        ["ותפור פונקציה ידנית", "exp(-2*t)*sin(5*t)", "exp(-3*t)", "t * exp(-t)", "cos(4*t)"]
+    )
+
+    if example_func == "ותפור פונקציה ידנית":
+        func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)")
+    else:
+                        func_input_str = example_func
+                        st.info(f"נבחרה הפונקציה: `{func_input_str}`")
+
+    if st.button("חשב טרנספורמים"):
+        try:
+            # המרת המחרוזת לפונקציה סימבולית של SymPy
+            local_dict = {'t': t_sym, 'sin': sp.sin, 'cos': sp.cos, 'exp': sp.exp, 'log': sp.log, 'Heaviside': sp.Heaviside}
+            f_t = sp.sympify(func_input_str, locals=local_dict)
+
+            st.markdown("### 📝 הפונקציה המקורית בזמן: $f(t)$")
+            st.latex(f"f(t) = {sp.latex(f_t)}")
+
+            # חישוב טרנספורם לפלס: L{f(t)} = integral(f(t)*exp(-s*t), (t, 0, oo))
+            with st.spinner("מחשב טרנספורם לפלס..."):
+                laplace_res = sp.laplace_transform(f_t, t_sym, s_sym, noconds=True)
+
+            st.markdown("### ⚡ טרנספורם לפלס: $F(s) = \\mathcal{L}\\{f(t)\\}$")
+            st.latex(f"F(s) = {sp.latex(laplace_res)}")
+
+            # חישוב טרנספורם פורייה רציף: F(omega) = integral(f(t)*exp(-i*omega*t), (t, -oo, oo))
+            with st.spinner("מחשב טרנספורם פורייה..."):
+                fourier_res = sp.fourier_transform(f_t, t_sym, omega)
+
+            st.markdown("### 📊 טרנספורם פורייה רציף: $\\mathcal{F}\\{\\omega\\}$")
+            st.latex(f"\\hat{f}(\\omega) = {sp.latex(fourier_res)}")
+
+        except Exception as e:
+            st.error(f"שגיאה בניתוח הפונקציה: {e}. ודא שהתחביר מתמטי תקין (למשל שימוש ב-`**` לחזקה וכו').")
+
+
+# ==========================================
+# כרטיסייה 4: תצוגת מפל מים (Waterfall / Spectrogram)
 # ==========================================
 with tab_waterfall:
     st.header("תצוגת ספקטרוגרמה / מפל מים (Waterfall Spectrogram)")
