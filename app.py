@@ -357,7 +357,7 @@ with tab_transforms:
                 st.error(f"שגיאה בפענוח הפונקציה: {e}")
 
     elif "טיילור" in transform_type:
-        func_input_str = st.text_input("הקלד פונקציה לפי $x$:", "cos(x)", key="taylor_input")
+        func_input_str = st.text_input("הקלד פונקציה לפי $x$:", "exp(x)", key="taylor_input")
         col_t1, col_t2 = st.columns(2)
         with col_t1:
             taylor_point = st.number_input("נקודת פיתוח ($x_0$)", value=0.0, key="taylor_pt")
@@ -371,7 +371,7 @@ with tab_transforms:
                 st.latex(rf"f(x) = {sp.latex(f_x)}")
                 st.latex(rf"T_n(x) \approx {sp.latex(taylor_res)}")
             except Exception as e:
-                st.error(f"שגיאה בפענוח הפונקציה: {e}")
+                st.error(f"שגיאה בפיתוח טיילור: {e}")
 
     elif "פוריאה" in transform_type:
         st.subheader("טור פוריאה (Fourier Series Expansion)")
@@ -383,16 +383,24 @@ with tab_transforms:
             try:
                 f_x = sp.sympify(func_input_str)
                 L = sp.pi
-                a0 = (1 / (2 * L)) * sp.integrate(f_x, (x_sym, -L, L))
                 
+                a0 = (1 / (2 * L)) * sp.integrate(f_x, (x_sym, -L, L)).doit()
                 fourier_sum = a0
+                terms_display = [sp.latex(a0)]
+                
                 for n in range(1, fourier_n + 1):
-                    an = (1 / L) * sp.integrate(f_x * sp.cos(n * x_sym), (x_sym, -L, L))
-                    bn = (1 / L) * sp.integrate(f_x * sp.sin(n * x_sym), (x_sym, -L, L))
-                    fourier_sum += an * sp.cos(n * x_sym) + bn * sp.sin(n * x_sym)
+                    an = (1 / L) * sp.integrate(f_x * sp.cos(n * x_sym), (x_sym, -L, L)).doit()
+                    bn = (1 / L) * sp.integrate(f_x * sp.sin(n * x_sym), (x_sym, -L, L)).doit()
+                    
+                    if an != 0:
+                        fourier_sum += an * sp.cos(n * x_sym)
+                        terms_display.append(rf"{sp.latex(an)} \cos({n}x)")
+                    if bn != 0:
+                        fourier_sum += bn * sp.sin(n * x_sym)
+                        terms_display.append(rf"{sp.latex(bn)} \sin({n}x)")
                 
                 st.latex(rf"f(x) = {sp.latex(f_x)}")
-                st.latex(rf"S_N(x) \approx {sp.latex(fourier_sum)}")
+                st.latex(rf"S_N(x) \approx " + " + ".join(terms_display))
             except Exception as e:
                 st.error(f"שגיאה בחישוב טור פוריאה: {e}")
 
