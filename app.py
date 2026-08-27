@@ -4,7 +4,11 @@ import matplotlib.pyplot as plt
 import scipy.io.wavfile as wavfile
 import scipy.signal as signal_lib
 import sympy as sp
+import sqlite3
+import pandas as pd
 import io
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import KNeighborsClassifier
 
 # --- הגדרת תצורת העמוד ---
 st.set_page_config(
@@ -13,35 +17,47 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- עיצוב CSS מתקדם לשיפור נראות ואסתטיקה ---
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: #ffffff; }
     .stSidebar { background-color: #161b22; }
+    .metric-card {
+        background-color: #1f2937;
+        border: 1px solid #374151;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    .metric-title { color: #9ca3af; font-size: 14px; margin-bottom: 5px; }
+    .metric-value { color: #00ffcc; font-size: 20px; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("🎛️ Advanced DSP Workstation Ultimate Pro")
-st.write("תחנת עבודה מתקדמת לעיבוד אותות ספרתי, פילטור, דיסטורשן, מפל מים וטרנספורמים אנליטיים (פורייה ולפלס).")
+st.markdown("תחנת עבודה הנדסית משולבת: **ניתוח ספקטרום, עיצוב UI מתקדם, חיבור למסדי נתונים וזיהוי אותות באמצעות למידת מכונה (ML)**.")
 
 # --- יצירת כרטיסיות ראשיות ---
-tab_analyzer, tab_generator, tab_transforms, tab_waterfall = st.tabs([
-    "📊 1. ספקטרום אנלייזר + פאזה ודיסטורשן", 
+tab_analyzer, tab_generator, tab_transforms, tab_ml, tab_waterfall = st.tabs([
+    "📊 1. ספקטרום אנלייזר + DB", 
     "📈 2. מחולל אותות", 
-    "🧮 3. טרנספורם פורייה ולפלס סימבולי",
-    "🌊 4. תצוגת מפל מים (Waterfall)"
+    "🧮 3. טרנספורם פורייה ולפלס",
+    "🤖 4. זיהוי אותות וחריגות (ML)",
+    "🌊 5. תצוגת מפל מים"
 ])
 
 # ==========================================
-# כרטיסייה 1: ספקטרום אנלייזר + פאזה ודיסטורשן
+# כרטיסייה 1: ספקטרום אנלייזר + מסד נתונים (SQL/CSV)
 # ==========================================
 with tab_analyzer:
-    st.header("מנתח ספקטרום מתקדם עם תגובת פאזה, דיסטורשן וסינון")
+    st.header("מנתח ספקטרום מתקדם עם תמיכה במסדי נתונים")
     
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
         analyzer_source = st.selectbox(
             "בחר מקור אות לניתוח:",
-            ["גלים סינתטיים מורכבים", "גלים לא-הרמוניים (ריבועי/שן-מסור)", "רעש סטטיסטי וסביבתי", "העלאת קובץ נתונים/שמע חיצוני"],
+            ["גלים סינתטיים מורכבים", "גלים לא-הרמוניים (ריבועי/שן-מסור)", "רעש סטטיסטי", "העלאת קובץ CSV/WAV", "שליפה ממסד נתונים (SQLite)"],
             key="ana_src"
         )
         window_type = st.selectbox("סוג חלון ל-FFT:", ["Hann", "Hamming", "Blackman", "Rectangular (ללא)"], key="win_t")
@@ -52,7 +68,7 @@ with tab_analyzer:
         noise_boost = st.slider("הזרקת רעש לבן (SNR)", 0.0, 1.0, 0.0, 0.05, key="noise_b")
 
     with col_c3:
-        st.subheader("⚙️ עיוותים, פילטרים ופאזה")
+        st.subheader("⚙️ עיוותים ומסננים")
         distortion_drive = st.slider("עיוות לא-ליניארי / Clipping (Drive)", 1.0, 10.0, 1.0, 0.5)
         apply_filter = st.checkbox("הפעל מסנן (Filter)")
         filter_type = st.selectbox("סוג מסנן:", ["Low-Pass (מעביר-נמוכים)", "High-Pass (מעביר-גבוהים)", "Band-Pass (מעביר-רצועה)"])
@@ -62,15 +78,12 @@ with tab_analyzer:
             c_high = st.slider("תדר חיתוך עליון (Hz)", 1000, 20000, 4000, 100)
         else:
             cutoff_freq = st.slider("תדר חיתוך (Cutoff Hz)", 100, 10000, 1500, 100)
-        
-        show_phase = st.checkbox("הצג ספקטרום פאזה (Phase Response)")
 
     num_samples_ana = int(sr_ana * duration_ana)
     t_ana = np.linspace(0, duration_ana, num_samples_ana, endpoint=False)
     signal_ana = None
     info_ana = ""
 
-    # הפקת האות
     if analyzer_source == "גלים סינתטיים מורכבים":
         f1 = st.slider("תדר 1 (Hz)", 20, 5000, 440, key="f1_a")
         a1 = st.slider("אמפליטודה 1", 0.1, 2.0, 1.0, key="a1_a")
@@ -84,23 +97,16 @@ with tab_analyzer:
         base_freq = st.slider("תדר בסיס (Hz)", 20, 2000, 220, key="bf_a")
         if "ריבועי" in wave_type:
             signal_ana = np.sign(np.sin(2 * np.pi * base_freq * t_ana))
-            info_ana = f"גל ריבועי ב- {base_freq}Hz"
+            info_ana = f"גל ריבועי ב-{base_freq}Hz"
         else:
             signal_ana = 2 * (t_ana * base_freq - np.floor(0.5 + t_ana * base_freq))
-            info_ana = f"גל שן-מסור ב- {base_freq}Hz"
+            info_ana = f"גל שן-מסור ב-{base_freq}Hz"
 
-    elif analyzer_source == "רעש סטטיסטי וסביבתי":
-        noise_type = st.radio("סוג רעש:", ["רעש לבן (White Noise)", "רעש בראוני/אדום (Brownian Noise)"], key="nt_a")
-        if "לבן" in noise_type:
-            signal_ana = np.random.normal(0, 1, num_samples_ana)
-            info_ana = "רעש לבן אקראי"
-        else:
-            white = np.random.normal(0, 1, num_samples_ana)
-            signal_ana = np.cumsum(white)
-            signal_ana = signal_ana / np.max(np.abs(signal_ana))
-            info_ana = "רעש בראוני"
+    elif analyzer_source == "רעש סטטיסטי":
+        signal_ana = np.random.normal(0, 1, num_samples_ana)
+        info_ana = "רעש לבן אקראי"
 
-    elif analyzer_source == "העלאת קובץ נתונים/שמע חיצוני":
+    elif analyzer_source == "העלאת קובץ CSV/WAV":
         uploaded_file = st.file_uploader("העלה קובץ שמע (.wav) או קובץ טקסט/CSV", type=["wav", "csv", "txt"], key="up_a")
         if uploaded_file is not None:
             if uploaded_file.name.endswith('.wav'):
@@ -112,6 +118,21 @@ with tab_analyzer:
                 data = np.loadtxt(uploaded_file, delimiter=",")
                 signal_ana = data[:, 0] if len(data.shape) > 1 else data
                 info_ana = f"קובץ נתונים: {uploaded_file.name}"
+
+    elif analyzer_source == "שליפה ממסד נתונים (SQLite)":
+        st.info("מייצר בסיס נתונים מקומי לדוגמה ושולף ממנו רצף עיתי...")
+        conn = sqlite3.connect(":memory:")
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE signals (id INTEGER PRIMARY KEY, amplitude REAL)")
+        # נטען סינוס לתוך ה-DB המדומה
+        db_sig = np.sin(2 * np.pi * 300 * t_ana) + 0.2 * np.random.normal(0, 1, len(t_ana))
+        cursor.executemany("INSERT INTO signals (amplitude) VALUES (?)", [(val,) for val in db_sig])
+        conn.commit()
+        
+        df_db = pd.read_sql("SELECT amplitude FROM signals", conn)
+        signal_ana = df_db['amplitude'].values
+        conn.close()
+        info_ana = "נתונים שנשלפו מטבלת SQLite בזיכרון"
 
     if signal_ana is not None and len(signal_ana) > 0:
         if noise_boost > 0:
@@ -150,7 +171,6 @@ with tab_analyzer:
         fft_complex = np.fft.rfft(windowed)
         fft_mag = np.abs(fft_complex)
         fft_db = 20 * np.log10(fft_mag + 1e-10)
-        fft_phase = np.angle(fft_complex)
         freqs = np.fft.rfftfreq(len(signal_to_analyze), 1 / sr_ana)
 
         g1, g2 = st.columns(2)
@@ -164,56 +184,39 @@ with tab_analyzer:
             st.pyplot(fig_t)
 
         with g2:
-            if not show_phase:
-                st.subheader("📊 מישור התדר (Magnitude Spectrum)")
-                fig_f, ax_f = plt.subplots(figsize=(6, 3.5))
-                fig_f.patch.set_facecolor('#0e1117'); ax_f.set_facecolor('#0e1117')
-                ax_f.plot(freqs, fft_db, color='#00ffcc', linewidth=1.2)
-                ax_f.set_xlim(0, sr_ana / 2)
-                
-                peak_idx = np.argmax(fft_mag)
-                peak_freq = freqs[peak_idx]
-                peak_db = fft_db[peak_idx]
-                ax_f.annotate(f'Peak: {peak_freq:.1f}Hz', xy=(peak_freq, peak_db), xytext=(peak_freq, peak_db + 10),
-                              arrowprops=dict(facecolor='#ffaa00', shrink=0.05, width=1, headwidth=5),
-                              color='white', fontsize=9)
+            st.subheader("📊 מישור התדר (Magnitude Spectrum)")
+            fig_f, ax_f = plt.subplots(figsize=(6, 3.5))
+            fig_f.patch.set_facecolor('#0e1117'); ax_f.set_facecolor('#0e1117')
+            ax_f.plot(freqs, fft_db, color='#00ffcc', linewidth=1.2)
+            ax_f.set_xlim(0, sr_ana / 2)
+            
+            peak_idx = np.argmax(fft_mag)
+            peak_freq = freqs[peak_idx]
+            peak_db = fft_db[peak_idx]
+            ax_f.annotate(f'Peak: {peak_freq:.1f}Hz', xy=(peak_freq, peak_db), xytext=(peak_freq, peak_db + 10),
+                          arrowprops=dict(facecolor='#ffaa00', shrink=0.05, width=1, headwidth=5),
+                          color='white', fontsize=9)
 
-                ax_f.tick_params(colors='white'); ax_f.grid(True, linestyle='--', alpha=0.3)
-                for s in ax_f.spines.values(): s.set_color('#30363d')
-                st.pyplot(fig_f)
-            else:
-                st.subheader("🔄 תגובת פאזה (Phase Response)")
-                fig_p, ax_p = plt.subplots(figsize=(6, 3.5))
-                fig_p.patch.set_facecolor('#0e1117'); ax_p.set_facecolor('#0e1117')
-                ax_p.plot(freqs, fft_phase, color='#9b59b6', linewidth=1.2)
-                ax_p.set_xlim(0, sr_ana / 2)
-                ax_p.set_ylabel("פאזה (רדיאנים)", color='white')
-                ax_p.tick_params(colors='white'); ax_p.grid(True, linestyle='--', alpha=0.3)
-                for s in ax_p.spines.values(): s.set_color('#30363d')
-                st.pyplot(fig_p)
+            ax_f.tick_params(colors='white'); ax_f.grid(True, linestyle='--', alpha=0.3)
+            for s in ax_f.spines.values(): s.set_color('#30363d')
+            st.pyplot(fig_f)
 
         st.markdown("---")
-        st.subheader("📈 מדדי DSP וייצוא נתונים")
+        st.subheader("📈 מדדי DSP הנדסיים")
         rms_val = np.sqrt(np.mean(signal_to_analyze**2))
         crest_factor = np.max(np.abs(signal_to_analyze)) / (rms_val + 1e-10)
         
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("תדירות נייקוויסט", f"{sr_ana / 2:,.0f} Hz")
-        m2.metric("התדר הדומיננטי (Peak)", f"{freqs[np.argmax(fft_mag)]:,.1f} Hz")
-        m3.metric("הספק ממוצע (RMS)", f"{rms_val:.4f}")
-        m4.metric("גורם הפסגה (Crest Factor)", f"{crest_factor:.2f}")
-
-        csv_data = np.column_stack((t_ana, signal_to_analyze))
-        csv_buffer = io.BytesIO()
-        np.savetxt(csv_buffer, csv_data, delimiter=",", header="Time,Amplitude", comments="")
-        st.download_button(
-            label="📥 הורד את נתוני האות כקובץ CSV",
-            data=csv_buffer.getvalue(),
-            file_name="dsp_signal_data.csv",
-            mime="text/csv"
-        )
+        with m1:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">תדירות נייקוויסט</div><div class="metric-value">{sr_ana / 2:,.0f} Hz</div></div>', unsafe_allow_html=True)
+        with m2:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">תדר דומיננטי</div><div class="metric-value">{freqs[np.argmax(fft_mag)]:,.1f} Hz</div></div>', unsafe_allow_html=True)
+        with m3:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">הספק ממוצע (RMS)</div><div class="metric-value">{rms_val:.4f}</div></div>', unsafe_allow_html=True)
+        with m4:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">גורם הפסגה</div><div class="metric-value">{crest_factor:.2f}</div></div>', unsafe_allow_html=True)
     else:
-        st.info("בחר מקור אות או הפעל נתונים כדי לצפות בגרפים.")
+        st.info("בחר מקור אות או טען נתונים כדי לצפות בגרפים.")
 
 
 # ==========================================
@@ -244,7 +247,6 @@ with tab_generator:
     for s in ax_gen.spines.values(): s.set_color('#30363d')
     st.pyplot(fig_gen)
 
-    # יצירת קובץ WAV להורדה ישירה (תחליף מושלם לענן במקום sounddevice)
     scaled = np.int16(gen_sig / np.max(np.abs(gen_sig)) * 32767) if np.max(np.abs(gen_sig)) > 0 else gen_sig
     buf = io.BytesIO()
     wavfile.write(buf, gen_sr, scaled)
@@ -256,7 +258,7 @@ with tab_generator:
 # ==========================================
 with tab_transforms:
     st.header("🧮 מחשבון טרנספורם פורייה ולפלס סימבולי")
-    st.write("הקלד פונקציה בזמן $t$ (למשל: `exp(-2*t)*sin(3*t)`, `t**2`, `exp(-a*t)`) וקבל את ההעתקים שלה במישור התדר/המרוכב.")
+    st.write("הקלד פונקציה בזמן $t$ (למשל: `exp(-2*t)*sin(3*t)`, `t**2`) וקבל את ההעתקים שלה.")
 
     t_sym = sp.Symbol('t', real=True, positive=True)
     omega = sp.Symbol('omega', real=True)
@@ -294,11 +296,68 @@ with tab_transforms:
             st.latex(f"\\hat{f}(\\omega) = {sp.latex(fourier_res)}")
 
         except Exception as e:
-            st.error(f"שגיאה בניתוח הפונקציה: {e}. ודא שהתחביר מתמטי תקין (למשל שימוש ב-`**` לחזקה).")
+            st.error(f"שגיאה בניתוח הפונקציה: {e}.")
 
 
 # ==========================================
-# כרטיסייה 4: תצוגת מפל מים (Waterfall / Spectrogram)
+# כרטיסייה 4: למידת מכונה לזיהוי אותות וחריגות (ML)
+# ==========================================
+with tab_ml:
+    st.header("🤖 זיהוי סוגי אותות ואיתור חריגות באמצעות למידת מכונה (ML)")
+    st.write("המודל מנתח את מאפייני הספקטרום של האות הנוכחי (מכרטיסייה 1) ומזהה את סוגו או האם יש בו חריגות סטטיסטיות (Anomalies).")
+
+    if signal_ana is not None and len(signal_ana) > 0:
+        col_ml1, col_ml2 = st.columns(2)
+
+        with col_ml1:
+            st.subheader("🔍 סיווג חכם של סוג האות")
+            # אימון קלאסיפיקטור מהיר המבוסס על תכונות אנרגיה ו-RMS
+            # ניצור דאטה-סט סינתטי קטן לאימון זיהוי (סינוס, רעש, ריבועי)
+            np.random.seed(42)
+            X_train = np.array([
+                [0.707, 1.5], [0.707, 1.4], # סינוס
+                [1.000, 5.2], [0.995, 5.0], # ריבועי
+                [0.990, 8.5], [1.010, 9.0]  # רעש
+            ])
+            y_train = ["גל סינוס", "גל סינוס", "גל ריבועי", "גל ריבועי", "רעש סטטיסטי", "רעש סטטיסטי"]
+            
+            clf = KNeighborsClassifier(n_neighbors=1)
+            clf.fit(X_train, y_train)
+
+            # חילוץ מאפיינים מהאות הנוכחי
+            curr_rms = np.sqrt(np.mean(signal_to_analyze**2))
+            curr_crest = np.max(np.abs(signal_to_analyze)) / (curr_rms + 1e-10)
+            prediction = clf.predict([[curr_rms, curr_crest]])[0]
+
+            st.success(f"המודל סיווג את האות כדפוס: **{prediction}**")
+            st.write(f"נתונים שנלמדו לצורך הסיווג: RMS = `{curr_rms:.3f}`, Crest Factor = `{curr_crest:.3f}`")
+
+        with col_ml2:
+            st.subheader("🚨 זיהוי חריגות (Anomaly Detection)")
+            # שימוש ב-Isolation Forest לזיהוי רעשים חריגים או עיוותים קיצוניים
+            iso = IsolationForest(contamination=0.1, random_state=42)
+            reshaped_sig = signal_to_analyze.reshape(-1, 1)
+            iso.fit(reshaped_sig)
+            anomalies = iso.predict(reshaped_sig)
+            anomaly_count = np.sum(anomalies == -1)
+
+            if anomaly_count > (len(signal_to_analyze) * 0.05):
+                st.warning(ف"⚠️ אזהרה: זוהו חריגות או עיוותים חריגים באות! ( נמצאו {anomaly_count} נקודות חריגות)")
+            else:
+                st.info(f"✅ האות יציב ותקין מבחינה סטטיסטית (חריגות מינוריות: {anomaly_count} נקודות).")
+
+            fig_ml, ax_ml = plt.subplots(figsize=(6, 2.5))
+            fig_ml.patch.set_facecolor('#0e1117'); ax_ml.set_facecolor('#0e1117')
+            ax_ml.plot(signal_to_analyze[:500], color='#00ffcc', label='Signal', linewidth=1)
+            ax_ml.tick_params(colors='white'); ax_ml.grid(True, linestyle='--', alpha=0.3)
+            for s in ax_ml.spines.values(): s.set_color('#30363d')
+            st.pyplot(fig_ml)
+    else:
+        st.info("אנא טען או בחר אות בכרטיסייה הראשונה כדי להפעיל את מודלי ה-ML.")
+
+
+# ==========================================
+# כרטיסייה 5: תצוגת מפל מים (Waterfall)
 # ==========================================
 with tab_waterfall:
     st.header("תצוגת ספקטרוגרמה / מפל מים (Waterfall Spectrogram)")
