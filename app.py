@@ -367,7 +367,8 @@ with tab_transforms:
         if st.button("חשב טורי טיילור", key="btn_taylor"):
             try:
                 f_x = sp.sympify(func_input_str)
-                taylor_res = f_x.series(x_sym, taylor_point, taylor_order + 1).removeO()
+                # פיתוח טיילור, הסרת O, וביצוע expand כדי לפתוח פולינומים בצורה מלאה
+                taylor_res = sp.expand(f_x.series(x_sym, taylor_point, taylor_order + 1).removeO())
                 st.latex(rf"f(x) = {sp.latex(f_x)}")
                 st.latex(rf"T_n(x) \approx {sp.latex(taylor_res)}")
             except Exception as e:
@@ -384,23 +385,34 @@ with tab_transforms:
                 f_x = sp.sympify(func_input_str)
                 L = sp.pi
                 
-                a0 = (1 / (2 * L)) * sp.integrate(f_x, (x_sym, -L, L)).doit()
-                fourier_sum = a0
-                terms_display = [sp.latex(a0)]
+                # חישוב a0 בצורה מוגנת עם .doit() והפעלה של simplify
+                a0_int = sp.integrate(f_x, (x_sym, -L, L))
+                a0 = (1 / (2 * L)) * (a0_int.doit() if hasattr(a0_int, 'doit') else a0_int)
+                a0 = sp.simplify(a0)
+                
+                terms_display = []
+                if a0 != 0:
+                    terms_display.append(sp.latex(a0))
                 
                 for n in range(1, fourier_n + 1):
-                    an = (1 / L) * sp.integrate(f_x * sp.cos(n * x_sym), (x_sym, -L, L)).doit()
-                    bn = (1 / L) * sp.integrate(f_x * sp.sin(n * x_sym), (x_sym, -L, L)).doit()
+                    an_int = sp.integrate(f_x * sp.cos(n * x_sym), (x_sym, -L, L))
+                    bn_int = sp.integrate(f_x * sp.sin(n * x_sym), (x_sym, -L, L))
+                    
+                    an = (1 / L) * (an_int.doit() if hasattr(an_int, 'doit') else an_int)
+                    bn = (1 / L) * (bn_int.doit() if hasattr(bn_int, 'doit') else bn_int)
+                    
+                    an = sp.simplify(an)
+                    bn = sp.simplify(bn)
                     
                     if an != 0:
-                        fourier_sum += an * sp.cos(n * x_sym)
                         terms_display.append(rf"{sp.latex(an)} \cos({n}x)")
                     if bn != 0:
-                        fourier_sum += bn * sp.sin(n * x_sym)
                         terms_display.append(rf"{sp.latex(bn)} \sin({n}x)")
                 
                 st.latex(rf"f(x) = {sp.latex(f_x)}")
-                st.latex(rf"S_N(x) \approx " + " + ".join(terms_display))
+                fourier_str = " + ".join(terms_display) if terms_display else "0"
+                fourier_str = fourier_str.replace("+ -", "- ")
+                st.latex(rf"S_N(x) \approx {fourier_str}")
             except Exception as e:
                 st.error(f"שגיאה בחישוב טור פוריאה: {e}")
 
