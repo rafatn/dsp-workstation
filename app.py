@@ -124,7 +124,6 @@ with tab_analyzer:
         conn = sqlite3.connect(":memory:")
         cursor = conn.cursor()
         cursor.execute("CREATE TABLE signals (id INTEGER PRIMARY KEY, amplitude REAL)")
-        # נטען סינוס לתוך ה-DB המדומה
         db_sig = np.sin(2 * np.pi * 300 * t_ana) + 0.2 * np.random.normal(0, 1, len(t_ana))
         cursor.executemany("INSERT INTO signals (amplitude) VALUES (?)", [(val,) for val in db_sig])
         conn.commit()
@@ -203,17 +202,23 @@ with tab_analyzer:
 
         st.markdown("---")
         st.subheader("📈 מדדי DSP הנדסיים")
+        
+        # חישוב מדדים כולל אנרגיה
         rms_val = np.sqrt(np.mean(signal_to_analyze**2))
         crest_factor = np.max(np.abs(signal_to_analyze)) / (rms_val + 1e-10)
+        dt = 1.0 / sr_ana
+        signal_energy = np.sum(signal_to_analyze**2) * dt
         
-        m1, m2, m3, m4 = st.columns(4)
+        m1, m2, m3, m4, m5 = st.columns(5)
         with m1:
             st.markdown(f'<div class="metric-card"><div class="metric-title">תדירות נייקוויסט</div><div class="metric-value">{sr_ana / 2:,.0f} Hz</div></div>', unsafe_allow_html=True)
         with m2:
             st.markdown(f'<div class="metric-card"><div class="metric-title">תדר דומיננטי</div><div class="metric-value">{freqs[np.argmax(fft_mag)]:,.1f} Hz</div></div>', unsafe_allow_html=True)
         with m3:
-            st.markdown(f'<div class="metric-card"><div class="metric-title">הספק ממוצע (RMS)</div><div class="metric-value">{rms_val:.4f}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-title">אנרגיית האות (E)</div><div class="metric-value">{signal_energy:.4f}</div></div>', unsafe_allow_html=True)
         with m4:
+            st.markdown(f'<div class="metric-card"><div class="metric-title">הספק ממוצע (RMS)</div><div class="metric-value">{rms_val:.4f}</div></div>', unsafe_allow_html=True)
+        with m5:
             st.markdown(f'<div class="metric-card"><div class="metric-title">גורם הפסגה</div><div class="metric-value">{crest_factor:.2f}</div></div>', unsafe_allow_html=True)
     else:
         st.info("בחר מקור אות או טען נתונים כדי לצפות בגרפים.")
@@ -311,20 +316,17 @@ with tab_ml:
 
         with col_ml1:
             st.subheader("🔍 סיווג חכם של סוג האות")
-            # אימון קלאסיפיקטור מהיר המבוסס על תכונות אנרגיה ו-RMS
-            # ניצור דאטה-סט סינתטי קטן לאימון זיהוי (סינוס, רעש, ריבועי)
             np.random.seed(42)
             X_train = np.array([
-                [0.707, 1.5], [0.707, 1.4], # סינוס
-                [1.000, 5.2], [0.995, 5.0], # ריבועי
-                [0.990, 8.5], [1.010, 9.0]  # רעש
+                [0.707, 1.5], [0.707, 1.4],
+                [1.000, 5.2], [0.995, 5.0],
+                [0.990, 8.5], [1.010, 9.0]
             ])
             y_train = ["גל סינוס", "גל סינוס", "גל ריבועי", "גל ריבועי", "רעש סטטיסטי", "רעש סטטיסטי"]
             
             clf = KNeighborsClassifier(n_neighbors=1)
             clf.fit(X_train, y_train)
 
-            # חילוץ מאפיינים מהאות הנוכחי
             curr_rms = np.sqrt(np.mean(signal_to_analyze**2))
             curr_crest = np.max(np.abs(signal_to_analyze)) / (curr_rms + 1e-10)
             prediction = clf.predict([[curr_rms, curr_crest]])[0]
@@ -334,7 +336,6 @@ with tab_ml:
 
         with col_ml2:
             st.subheader("🚨 זיהוי חריגות (Anomaly Detection)")
-            # שימוש ב-Isolation Forest לזיהוי רעשים חריגים או עיוותים קיצוניים
             iso = IsolationForest(contamination=0.1, random_state=42)
             reshaped_sig = signal_to_analyze.reshape(-1, 1)
             iso.fit(reshaped_sig)
