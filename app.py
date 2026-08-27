@@ -367,10 +367,23 @@ with tab_transforms:
         if st.button("חשב טורי טיילור", key="btn_taylor"):
             try:
                 f_x = sp.sympify(func_input_str)
-                # פיתוח טיילור, הסרת O, וביצוע expand כדי לפתוח פולינומים בצורה מלאה
-                taylor_res = sp.expand(f_x.series(x_sym, taylor_point, taylor_order + 1).removeO())
+                series_obj = f_x.series(x_sym, taylor_point, taylor_order + 1)
+                taylor_res = series_obj.removeO()
+                
+                if "exp" in func_input_str or "sin" in func_input_str or "cos" in func_input_str or taylor_res == f_x:
+                    terms = [f_x.subs(x_sym, taylor_point)]
+                    curr_deriv = f_x
+                    fact = 1
+                    for i in range(1, taylor_order + 1):
+                        curr_deriv = sp.diff(curr_deriv, x_sym)
+                        fact *= i
+                        val_at_pt = curr_deriv.subs(x_sym, taylor_point)
+                        if val_at_pt != 0:
+                            terms.append((val_at_pt / fact) * (x_sym - taylor_point)**i)
+                    taylor_res = sum(terms)
+
                 st.latex(rf"f(x) = {sp.latex(f_x)}")
-                st.latex(rf"T_n(x) \approx {sp.latex(taylor_res)}")
+                st.latex(rf"T_n(x) \approx {sp.latex(sp.expand(taylor_res))}")
             except Exception as e:
                 st.error(f"שגיאה בפיתוח טיילור: {e}")
 
@@ -385,7 +398,6 @@ with tab_transforms:
                 f_x = sp.sympify(func_input_str)
                 L = sp.pi
                 
-                # חישוב a0 בצורה מוגנת עם .doit() והפעלה של simplify
                 a0_int = sp.integrate(f_x, (x_sym, -L, L))
                 a0 = (1 / (2 * L)) * (a0_int.doit() if hasattr(a0_int, 'doit') else a0_int)
                 a0 = sp.simplify(a0)
