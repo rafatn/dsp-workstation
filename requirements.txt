@@ -1,7 +1,8 @@
-numpy
 streamlit
-matplotlib
+numpy
+plotly
 scipy
 sympy
 pandas
 scikit-learn
+xlsxwriter
