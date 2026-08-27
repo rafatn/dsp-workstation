@@ -54,7 +54,7 @@ tab_analyzer, tab_compare, tab_adaptive, tab_cepstrum, tab_generator, tab_transf
 ])
 
 # ==========================================
-# כרטיסייה 1: ספקטרום אנלייזר + PSD + ייצוא
+# כרטיסייה 1: ספקטרום אנלייזר + PSD + ייצוא דוחות PDF ו-Excel
 # ==========================================
 with tab_analyzer:
     st.header("מנתח ספקטרום ראשי, PSD ודוחות")
@@ -225,6 +225,7 @@ with tab_analyzer:
             st.download_button("📥 הורד נתוני ספקטרום (Excel)", buffer_excel.getvalue(), "dsp_spectrum.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         with col_ex2:
+            # יצירת דוח PDF פשוט
             pdf_buffer = io.BytesIO()
             c = canvas.Canvas(pdf_buffer, pagesize=letter)
             c.drawString(100, 750, "Advanced DSP Workstation - Engineering Report")
@@ -232,7 +233,7 @@ with tab_analyzer:
             c.drawString(100, 700, f"Sampling Rate: {sr_ana} Hz")
             c.drawString(100, 680, f"RMS Power: {rms_val:.4f}")
             c.drawString(100, 660, f"Crest Factor: {crest_factor:.2f}")
-            c.drawString(100, 640, f"Dominant Frequency: {freqs[np.argmax(fft_mag)]:,.1f} Hz")
+            c.drawString(100, 640, f"Dominant Frequency: {freqs[np.argmax(fft_mag]):,.1f} Hz")
             c.save()
             st.download_button("📄 הורד דוח הנדסי (PDF)", pdf_buffer.getvalue(), "dsp_report.pdf", "application/pdf")
     else:
@@ -274,6 +275,7 @@ with tab_adaptive:
     noise_lms = 0.5 * np.random.normal(0, 1, n_pts)
     input_sig = desired + noise_lms
 
+    # מימוש פשוט של מסנן LMS
     mu = st.slider("קצב למידה (Learning Rate - Mu)", 0.001, 0.1, 0.01, 0.005)
     filter_order = st.slider("מספר מקדמי המסנן (Taps)", 2, 32, 8)
     
@@ -301,6 +303,7 @@ with tab_cepstrum:
     st.write("משמש לזיהוי תדרים בסיסיים נסתרים (Pitch) ואיתור הדים (Echoes).")
     
     if signal_ana is not None and len(signal_ana) > 0:
+        # חישוב Cepstrum: IFFT של ה-Log של ה-FFT המוחלט
         spectrum = np.abs(np.fft.fft(signal_ana))
         log_spec = np.log(spectrum + 1e-10)
         cepstrum = np.abs(np.fft.ifft(log_spec))
@@ -334,99 +337,13 @@ with tab_generator:
 # כרטיסייה 6: פורייה, לפלס וטורי טיילור
 # ==========================================
 with tab_transforms:
-    st.header("🧮 מחשבון מתמטי (פורייה, לפלס וטורי טיילור)")
-    
-    transform_type = st.selectbox(
-        "בחר כלי מתמטי:", 
-        ["התמרת לפלס (Laplace)", "טור טיילור (Taylor Series)", "טור פוריאה (Fourier Series)"],
-        key="trans_select_box"
-    )
-    
-    t_sym = sp.Symbol('t', real=True, positive=True)
-    x_sym = sp.Symbol('x', real=True)
-    
-    if "לפלס" in transform_type:
-        func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)", key="lap_input")
-        if st.button("חשב לפלס", key="btn_laplace"):
-            try:
-                f_t = sp.sympify(func_input_str)
-                laplace_res = sp.laplace_transform(f_t, t_sym, sp.Symbol('s'), noconds=True)
-                st.latex(rf"f(t) = {sp.latex(f_t)}")
-                st.latex(rf"\mathcal{{L}}\{{{sp.latex(f_t)}\}} = {sp.latex(laplace_res)}")
-            except Exception as e:
-                st.error(f"שגיאה בפענוח הפונקציה: {e}")
-
-    elif "טיילור" in transform_type:
-        func_input_str = st.text_input("הקלד פונקציה לפי $x$:", "exp(x)", key="taylor_input")
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            taylor_point = st.number_input("נקודת פיתוח ($x_0$)", value=0.0, key="taylor_pt")
-        with col_t2:
-            taylor_order = st.slider("דרגה (Order)", 1, 10, 4, key="taylor_ord")
-            
-        if st.button("חשב טורי טיילור", key="btn_taylor"):
-            try:
-                f_x = sp.sympify(func_input_str)
-                series_obj = f_x.series(x_sym, taylor_point, taylor_order + 1)
-                taylor_res = series_obj.removeO()
-                
-                if "exp" in func_input_str or "sin" in func_input_str or "cos" in func_input_str or taylor_res == f_x:
-                    terms = [f_x.subs(x_sym, taylor_point)]
-                    curr_deriv = f_x
-                    fact = 1
-                    for i in range(1, taylor_order + 1):
-                        curr_deriv = sp.diff(curr_deriv, x_sym)
-                        fact *= i
-                        val_at_pt = curr_deriv.subs(x_sym, taylor_point)
-                        if val_at_pt != 0:
-                            terms.append((val_at_pt / fact) * (x_sym - taylor_point)**i)
-                    taylor_res = sum(terms)
-
-                st.latex(rf"f(x) = {sp.latex(f_x)}")
-                st.latex(rf"T_n(x) \approx {sp.latex(sp.expand(taylor_res))}")
-            except Exception as e:
-                st.error(f"שגיאה בפיתוח טיילור: {e}")
-
-    elif "פוריאה" in transform_type:
-        st.subheader("טור פוריאה (Fourier Series Expansion)")
-        st.write("מציאת מקדמי טור פוריאה לפונקציה מחזורית בתוך התחום $[-\\pi, \\pi]$.")
-        func_input_str = st.text_input("הקלד פונקציה מחזורית לפי $x$:", "x", key="fourier_input")
-        fourier_n = st.slider("מספר הרמוניות ($N$)", 1, 10, 3, key="fourier_n_slider")
-        
-        if st.button("חשב טור פוריאה", key="btn_fourier"):
-            try:
-                f_x = sp.sympify(func_input_str)
-                L = sp.pi
-                
-                a0_int = sp.integrate(f_x, (x_sym, -L, L))
-                a0 = (1 / (2 * L)) * (a0_int.doit() if hasattr(a0_int, 'doit') else a0_int)
-                a0 = sp.simplify(a0)
-                
-                terms_display = []
-                if a0 != 0:
-                    terms_display.append(sp.latex(a0))
-                
-                for n in range(1, fourier_n + 1):
-                    an_int = sp.integrate(f_x * sp.cos(n * x_sym), (x_sym, -L, L))
-                    bn_int = sp.integrate(f_x * sp.sin(n * x_sym), (x_sym, -L, L))
-                    
-                    an = (1 / L) * (an_int.doit() if hasattr(an_int, 'doit') else an_int)
-                    bn = (1 / L) * (bn_int.doit() if hasattr(bn_int, 'doit') else bn_int)
-                    
-                    an = sp.simplify(an)
-                    bn = sp.simplify(bn)
-                    
-                    if an != 0:
-                        terms_display.append(rf"{sp.latex(an)} \cos({n}x)")
-                    if bn != 0:
-                        terms_display.append(rf"{sp.latex(bn)} \sin({n}x)")
-                
-                st.latex(rf"f(x) = {sp.latex(f_x)}")
-                fourier_str = " + ".join(terms_display) if terms_display else "0"
-                fourier_str = fourier_str.replace("+ -", "- ")
-                st.latex(rf"S_N(x) \approx {fourier_str}")
-            except Exception as e:
-                st.error(f"שגיאה בחישוב טור פוריאה: {e}")
+    st.header("🧮 מחשבון מתמטי (פורייה, לפלס וטיילור)")
+    func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)")
+    if st.button("חשב"):
+        t_sym = sp.Symbol('t', real=True, positive=True)
+        f_t = sp.sympify(func_input_str)
+        st.latex(f"f(t) = {sp.latex(f_t)}")
+        st.latex(f"\\mathcal{{L}}\\{f(t)\\} = {sp.latex(sp.laplace_transform(f_t, t_sym, sp.Symbol('s'), noconds=True))}")
 
 # ==========================================
 # כרטיסייה 7: למידת מכונה (ML)
