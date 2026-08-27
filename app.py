@@ -1,7 +1,6 @@
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
-import sounddevice as sd
 import scipy.io.wavfile as wavfile
 import scipy.signal as signal_lib
 import sympy as sp
@@ -42,7 +41,7 @@ with tab_analyzer:
     with col_c1:
         analyzer_source = st.selectbox(
             "בחר מקור אות לניתוח:",
-            ["גלים סינתטיים מורכבים", "גלים לא-הרמוניים (ריבועי/שן-מסור)", "רעש סטטיסטי וסביבתי", "הקלטת מיקרופון חיה", "העלאת קובץ נתונים/שמע חיצוני"],
+            ["גלים סינתטיים מורכבים", "גלים לא-הרמוניים (ריבועי/שן-מסור)", "רעש סטטיסטי וסביבתי", "העלאת קובץ נתונים/שמע חיצוני"],
             key="ana_src"
         )
         window_type = st.selectbox("סוג חלון ל-FFT:", ["Hann", "Hamming", "Blackman", "Rectangular (ללא)"], key="win_t")
@@ -100,13 +99,6 @@ with tab_analyzer:
             signal_ana = np.cumsum(white)
             signal_ana = signal_ana / np.max(np.abs(signal_ana))
             info_ana = "רעש בראוני"
-
-    elif analyzer_source == "הקלטת מיקרופון חיה":
-        if st.button("🔴 התחל הקלטה חיה", key="mic_a"):
-            with st.spinner(f"מקליט למשך {duration_ana} שניות..."):
-                audio_rec = sd.rec(int(duration_ana * sr_ana), samplerate=sr_ana, channels=1, blocking=True)
-                signal_ana = audio_rec[:, 0]
-                info_ana = "הקלטת מיקרופון חיה"
 
     elif analyzer_source == "העלאת קובץ נתונים/שמע חיצוני":
         uploaded_file = st.file_uploader("העלה קובץ שמע (.wav) או קובץ טקסט/CSV", type=["wav", "csv", "txt"], key="up_a")
@@ -252,14 +244,11 @@ with tab_generator:
     for s in ax_gen.spines.values(): s.set_color('#30363d')
     st.pyplot(fig_gen)
 
-    b1, b2 = st.columns(2)
-    with b1:
-        if st.button("🔊 השמע אות"): sd.play(gen_sig, gen_sr)
-    with b2:
-        scaled = np.int16(gen_sig / np.max(np.abs(gen_sig)) * 32767) if np.max(np.abs(gen_sig)) > 0 else gen_sig
-        buf = io.BytesIO()
-        wavfile.write(buf, gen_sr, scaled)
-        st.download_button("💾 הורד WAV", buf.getvalue(), f"gen_{gen_freq}Hz.wav", "audio/wav")
+    # יצירת קובץ WAV להורדה ישירה (תחליף מושלם לענן במקום sounddevice)
+    scaled = np.int16(gen_sig / np.max(np.abs(gen_sig)) * 32767) if np.max(np.abs(gen_sig)) > 0 else gen_sig
+    buf = io.BytesIO()
+    wavfile.write(buf, gen_sr, scaled)
+    st.download_button("💾 הורד קובץ שמע WAV להשמעה", buf.getvalue(), f"gen_{gen_freq}Hz.wav", "audio/wav")
 
 
 # ==========================================
@@ -273,35 +262,31 @@ with tab_transforms:
     omega = sp.Symbol('omega', real=True)
     s_sym = sp.Symbol('s')
 
-    # דוגמאות מוכנות מראש לבחירה מהירה
     example_func = st.selectbox(
         "או בחר דוגמה מוכנה מראש:",
-        ["ותפור פונקציה ידנית", "exp(-2*t)*sin(5*t)", "exp(-3*t)", "t * exp(-t)", "cos(4*t)"]
+        ["הקלד פונקציה ידנית", "exp(-2*t)*sin(5*t)", "exp(-3*t)", "t * exp(-t)", "cos(4*t)"]
     )
 
-    if example_func == "ותפור פונקציה ידנית":
+    if example_func == "הקלד פונקציה ידנית":
         func_input_str = st.text_input("הקלד פונקציה לפי $t$:", "exp(-2*t)*sin(3*t)")
     else:
-                        func_input_str = example_func
-                        st.info(f"נבחרה הפונקציה: `{func_input_str}`")
+        func_input_str = example_func
+        st.info(f"נבחרה הפונקציה: `{func_input_str}`")
 
     if st.button("חשב טרנספורמים"):
         try:
-            # המרת המחרוזת לפונקציה סימבולית של SymPy
             local_dict = {'t': t_sym, 'sin': sp.sin, 'cos': sp.cos, 'exp': sp.exp, 'log': sp.log, 'Heaviside': sp.Heaviside}
             f_t = sp.sympify(func_input_str, locals=local_dict)
 
             st.markdown("### 📝 הפונקציה המקורית בזמן: $f(t)$")
             st.latex(f"f(t) = {sp.latex(f_t)}")
 
-            # חישוב טרנספורם לפלס: L{f(t)} = integral(f(t)*exp(-s*t), (t, 0, oo))
             with st.spinner("מחשב טרנספורם לפלס..."):
                 laplace_res = sp.laplace_transform(f_t, t_sym, s_sym, noconds=True)
 
             st.markdown("### ⚡ טרנספורם לפלס: $F(s) = \\mathcal{L}\\{f(t)\\}$")
             st.latex(f"F(s) = {sp.latex(laplace_res)}")
 
-            # חישוב טרנספורם פורייה רציף: F(omega) = integral(f(t)*exp(-i*omega*t), (t, -oo, oo))
             with st.spinner("מחשב טרנספורם פורייה..."):
                 fourier_res = sp.fourier_transform(f_t, t_sym, omega)
 
@@ -309,7 +294,7 @@ with tab_transforms:
             st.latex(f"\\hat{f}(\\omega) = {sp.latex(fourier_res)}")
 
         except Exception as e:
-            st.error(f"שגיאה בניתוח הפונקציה: {e}. ודא שהתחביר מתמטי תקין (למשל שימוש ב-`**` לחזקה וכו').")
+            st.error(f"שגיאה בניתוח הפונקציה: {e}. ודא שהתחביר מתמטי תקין (למשל שימוש ב-`**` לחזקה).")
 
 
 # ==========================================
