@@ -340,7 +340,8 @@ with tab_transforms:
         t_sym = sp.Symbol('t', real=True, positive=True)
         f_t = sp.sympify(func_input_str)
         st.latex(f"f(t) = {sp.latex(f_t)}")
-        st.latex(f"\\mathcal{{L}}\\{f(t)\\} = {sp.latex(sp.laplace_transform(f_t, t_sym, sp.Symbol('s'), noconds=True))}")
+        # תוקן כאן ל-rf"..." כדי לפתור את השגיאה
+        st.latex(rf"\mathcal{{L}}\{{{sp.latex(f_t)}\}} = {sp.latex(sp.laplace_transform(f_t, t_sym, sp.Symbol('s'), noconds=True))}")
 
 # ==========================================
 # כרטיסייה 7: למידת מכונה (ML)
